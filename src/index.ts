@@ -4,31 +4,35 @@ import { listCommand } from './commands/list';
 import { getCommand } from './commands/get';
 import { finishCommand } from './commands/finish';
 import { updateCommand } from './commands/update';
+import { envCommand } from './commands/env';
 
 const args = process.argv.slice(2);
 const command = args[0];
 const commandArgs = args.slice(1);
 
 switch (command) {
-    case 'new':
-        newCommand(commandArgs);
-        break;
-    case 'list':
-        listCommand();
-        break;
-    case 'get':
-        getCommand(commandArgs);
-        break;
-    case 'finish':
-        finishCommand(commandArgs);
-        break;
-    case 'update':
-        updateCommand(commandArgs);
-        break;
-    case 'help':
-    case '--help':
-    case '-h':
-        console.log(`
+  case 'new':
+    newCommand(commandArgs);
+    break;
+  case 'list':
+    listCommand();
+    break;
+  case 'get':
+    getCommand(commandArgs);
+    break;
+  case 'finish':
+    finishCommand(commandArgs);
+    break;
+  case 'update':
+    updateCommand(commandArgs);
+    break;
+  case 'env':
+    envCommand();
+    break;
+  case 'help':
+  case '--help':
+  case '-h':
+    console.log(`
 Usage: tm <command> [args]
 
 Commands:
@@ -60,22 +64,25 @@ Commands:
       --rm-file <path>     Remove editable file
       --read-file <path>   Add read-only file
 
+  env
+    Show the current task data file path.
+
 Examples:
   tm new "Refactor auth" --status wip --body "Starting now"
   tm update 1 --status done 2 --status wip --body "Fixing bug"
   tm get 1 --history
     `);
-        break;
-    default:
-        // If no command provided, show help
-        if (!command) {
-            console.log(`
+    break;
+  default:
+    // If no command provided, show help
+    if (!command) {
+      console.log(`
 Usage: tm <command> [args]
 
 Run 'tm help' for detailed usage and examples.
         `);
-        } else {
-            console.error(`Error: Unknown command '${command}'. Run 'tm help' for usage.`);
-            process.exit(1);
-        }
+    } else {
+      console.error(`Error: Unknown command '${command}'. Run 'tm help' for usage.`);
+      process.exit(1);
+    }
 }

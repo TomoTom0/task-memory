@@ -1,9 +1,50 @@
-import { join } from 'path';
+import { join, resolve, dirname } from 'path';
 import { homedir } from 'os';
-import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, statSync } from 'fs';
 import type { Task, TaskStore } from './types';
 
-const DB_PATH = join(homedir(), '.task-memory.json');
+export function findGitDir(startDir: string): string | null {
+    let currentDir = startDir;
+    const home = homedir();
+
+    while (true) {
+        const gitDir = join(currentDir, '.git');
+        if (existsSync(gitDir)) {
+            try {
+                if (statSync(gitDir).isDirectory()) {
+                    return gitDir;
+                }
+            } catch (e) {
+                // ignore
+            }
+        }
+
+        if (currentDir === home) {
+            return null;
+        }
+
+        const parentDir = dirname(currentDir);
+        if (parentDir === currentDir) {
+            return null;
+        }
+        currentDir = parentDir;
+    }
+}
+
+export function getDbPath(): string {
+    if (process.env.TASK_MEMORY_PATH) {
+        return resolve(process.cwd(), process.env.TASK_MEMORY_PATH);
+    }
+
+    const gitDir = findGitDir(process.cwd());
+    if (gitDir) {
+        return join(gitDir, 'task-memory.json');
+    }
+
+    return join(homedir(), '.task-memory.json');
+}
+
+const DB_PATH = getDbPath();
 
 export function loadTasks(): Task[] {
     if (!existsSync(DB_PATH)) {
@@ -64,7 +105,7 @@ export function getNextId(tasks: Task[]): string {
     for (const task of tasks) {
         const match = task.id.match(/^TASK-(\d+)$/);
         if (match) {
-            const num = parseInt(match[1], 10);
+            const num = parseInt(match[1]!, 10);
             if (num > max) max = num;
         }
     }
