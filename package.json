@@ -1,0 +1,15 @@
+{
+  "name": "task-memory",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "bin": {
+    "tm": "src/index.ts"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
