@@ -39,13 +39,14 @@ Commands:
   new <summary> [options]
     Create a new task.
     Options:
-      --status <status>    Set initial status (todo, wip, done)
+      --status <status>    Set initial status (todo, wip, done, pending, long, closed)
+      --priority <value>   Set priority
       --body <text>        Add initial body text
       --add-file <path>    Add editable file
       --read-file <path>   Add read-only file
 
   list
-    List active tasks (todo, wip).
+    List active tasks (todo, wip, pending, long).
 
   get <id...> [options]
     Get task details (JSON).
@@ -58,7 +59,8 @@ Commands:
   update <id...> [options]
     Update task(s). Supports context switching.
     Options:
-      --status <status>    Update status
+      --status <status>    Update status (todo, wip, done, pending, long, closed)
+      --priority <value>   Update priority
       --body <text>        Append body text
       --add-file <path>    Add editable file
       --rm-file <path>     Remove editable file
@@ -68,7 +70,7 @@ Commands:
     Show the current task data file path.
 
 Examples:
-  tm new "Refactor auth" --status wip --body "Starting now"
+  tm new "Refactor auth" --status wip --body "Starting now" --priority high
   tm update 1 --status done 2 --status wip --body "Fixing bug"
   tm get 1 --history
     `);

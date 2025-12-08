@@ -4,20 +4,30 @@ import type { Task, TaskStatus } from '../types';
 export function newCommand(args: string[]): void {
     const summaryParts: string[] = [];
     let status: TaskStatus = 'todo';
+    let priority: string | undefined;
     const bodies: string[] = [];
     const addFiles: string[] = [];
     const readFiles: string[] = [];
 
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
+        if (!arg) continue;
         if (arg.startsWith('--')) {
             switch (arg) {
                 case '--status':
                     const s = args[++i];
-                    if (s && ['todo', 'wip', 'done'].includes(s)) {
+                    if (s && ['todo', 'wip', 'done', 'pending', 'long', 'closed'].includes(s)) {
                         status = s as TaskStatus;
                     } else {
-                        console.error(`Error: Invalid status '${s}'. Allowed: todo, wip, done.`);
+                        console.error(`Error: Invalid status '${s}'. Allowed: todo, wip, done, pending, long, closed.`);
+                        return;
+                    }
+                    break;
+                case '--priority':
+                    const p = args[++i];
+                    if (p) priority = p;
+                    else {
+                        console.error('Error: --priority requires a value.');
                         return;
                     }
                     break;
@@ -66,6 +76,7 @@ export function newCommand(args: string[]): void {
     const newTask: Task = {
         id,
         status,
+        priority,
         summary,
         bodies: bodies.map(text => ({ text, created_at: now })),
         files: {

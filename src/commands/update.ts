@@ -27,6 +27,7 @@ export function updateCommand(args: string[]): void {
 
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
+        if (!arg) continue;
 
         if (arg.startsWith('--')) {
             // Option handling
@@ -34,10 +35,18 @@ export function updateCommand(args: string[]): void {
             switch (arg) {
                 case '--status':
                     const status = args[++i];
-                    if (status && ['todo', 'wip', 'done'].includes(status)) {
+                    if (status && ['todo', 'wip', 'done', 'pending', 'long', 'closed'].includes(status)) {
                         applyUpdate(t => t.status = status as any);
                     } else {
-                        console.error(`Error: Invalid status '${status}'. Allowed: todo, wip, done.`);
+                        console.error(`Error: Invalid status '${status}'. Allowed: todo, wip, done, pending, long, closed.`);
+                    }
+                    break;
+                case '--priority':
+                    const priority = args[++i];
+                    if (priority) {
+                        applyUpdate(t => t.priority = priority);
+                    } else {
+                        console.error('Error: --priority requires a value.');
                     }
                     break;
                 case '--body':

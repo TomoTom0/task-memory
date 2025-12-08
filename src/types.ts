@@ -1,4 +1,4 @@
-export type TaskStatus = 'todo' | 'wip' | 'done';
+export type TaskStatus = 'todo' | 'wip' | 'done' | 'pending' | 'long' | 'closed';
 
 export interface TaskBody {
     text: string;
@@ -13,6 +13,7 @@ export interface TaskFiles {
 export interface Task {
     id: string;
     status: TaskStatus;
+    priority?: string;
     summary: string;
     bodies: TaskBody[];
     files: TaskFiles;
