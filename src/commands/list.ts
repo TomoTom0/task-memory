@@ -1,10 +1,14 @@
 import { loadTasks } from '../store';
+import { loadReviews } from '../reviewStore';
 
 export function listCommand(): void {
     const tasks = loadTasks();
     const activeTasks = tasks.filter(t => t.status !== 'done');
 
-    if (activeTasks.length === 0) {
+    const reviews = loadReviews();
+    const checkingReviews = reviews.filter(r => r.status === 'checking');
+
+    if (activeTasks.length === 0 && checkingReviews.length === 0) {
         return;
     }
 
@@ -15,5 +19,9 @@ export function listCommand(): void {
         const displayId = match ? match[1] : task.id;
         const priorityStr = task.priority ? ` (Priority: ${task.priority})` : '';
         console.log(`${displayId}: ${task.summary} [${task.status}]${priorityStr}`);
+    });
+
+    checkingReviews.forEach(review => {
+        console.log(`${review.id}: ${review.title} [${review.status}]`);
     });
 }

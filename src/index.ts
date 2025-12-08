@@ -5,6 +5,7 @@ import { getCommand } from './commands/get';
 import { finishCommand } from './commands/finish';
 import { updateCommand } from './commands/update';
 import { envCommand } from './commands/env';
+import { reviewCommand } from './commands/review';
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -28,6 +29,9 @@ switch (command) {
     break;
   case 'env':
     envCommand();
+    break;
+  case 'review':
+    reviewCommand(commandArgs);
     break;
   case 'help':
   case '--help':
@@ -68,6 +72,10 @@ Commands:
 
   env
     Show the current task data file path.
+
+  review <subcommand> [args]
+    Manage reviews.
+    Subcommands: new, list, get, update, return, accept, reject
 
 Examples:
   tm new "Refactor auth" --status wip --body "Starting now" --priority high
