@@ -31,6 +31,8 @@ switch (command) {
     envCommand();
     break;
   case 'review':
+  case 'rev':
+  case 'tmr':
     reviewCommand(commandArgs);
     break;
   case 'help':
@@ -43,11 +45,11 @@ Commands:
   new <summary> [options]
     Create a new task.
     Options:
-      --status <status>    Set initial status (todo, wip, done, pending, long, closed)
-      --priority <value>   Set priority
-      --body <text>        Add initial body text
-      --add-file <path>    Add editable file
-      --read-file <path>   Add read-only file
+      --status, -s <status>    Set initial status (todo, wip, done, pending, long, closed)
+      --priority, -p <value>   Set priority
+      --body, -b <text>        Add initial body text
+      --add-file, -a <path>    Add editable file
+      --read-file, -r <path>   Add read-only file
 
   list
     List active tasks (todo, wip, pending, long).
@@ -55,7 +57,7 @@ Commands:
   get <id...> [options]
     Get task details (JSON).
     Options:
-      --all, --history     Show full history of bodies
+      --all, -a, --history, -h     Show full history of bodies
 
   finish <id...>
     Mark task(s) as done.
@@ -63,12 +65,12 @@ Commands:
   update <id...> [options]
     Update task(s). Supports context switching.
     Options:
-      --status <status>    Update status (todo, wip, done, pending, long, closed)
-      --priority <value>   Update priority
-      --body <text>        Append body text
-      --add-file <path>    Add editable file
-      --rm-file <path>     Remove editable file
-      --read-file <path>   Add read-only file
+      --status, -s <status>    Update status (todo, wip, done, pending, long, closed)
+      --priority, -p <value>   Update priority
+      --body, -b <text>        Append body text
+      --add-file, -a <path>    Add editable file
+      --rm-file, -d <path>     Remove editable file
+      --read-file, -r <path>   Add read-only file
 
   env
     Show the current task data file path.

@@ -159,7 +159,13 @@ function handleUpdate(args: string[]) {
     let i = 1;
     while (i < args.length) {
         if (args[i] === '--status') {
-            status = args[i + 1] as ReviewStatus;
+            const newStatus = args[i + 1];
+            const validStatuses: ReviewStatus[] = ['todo', 'wip', 'checking', 'closed', 'done', 'pending'];
+            if (!validStatuses.includes(newStatus as ReviewStatus)) {
+                console.error(`Error: Invalid status '${newStatus}'. Valid statuses are: ${validStatuses.join(', ')}`);
+                process.exit(1);
+            }
+            status = newStatus as ReviewStatus;
             i += 2;
         } else if (args[i] === '--body') {
             body = args[i + 1];

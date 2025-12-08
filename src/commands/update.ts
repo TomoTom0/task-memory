@@ -29,11 +29,12 @@ export function updateCommand(args: string[]): void {
         const arg = args[i];
         if (!arg) continue;
 
-        if (arg.startsWith('--')) {
+        if (arg.startsWith('-')) {
             // Option handling
             lastActionWasOption = true;
             switch (arg) {
                 case '--status':
+                case '-s':
                     const status = args[++i];
                     if (status && ['todo', 'wip', 'done', 'pending', 'long', 'closed'].includes(status)) {
                         applyUpdate(t => t.status = status as any);
@@ -42,6 +43,7 @@ export function updateCommand(args: string[]): void {
                     }
                     break;
                 case '--priority':
+                case '-p':
                     const priority = args[++i];
                     if (priority) {
                         applyUpdate(t => t.priority = priority);
@@ -50,6 +52,7 @@ export function updateCommand(args: string[]): void {
                     }
                     break;
                 case '--body':
+                case '-b':
                     const bodyText = args[++i];
                     if (bodyText) {
                         applyUpdate(t => t.bodies.push({
@@ -61,6 +64,7 @@ export function updateCommand(args: string[]): void {
                     }
                     break;
                 case '--add-file':
+                case '-a':
                     const addPath = args[++i];
                     if (addPath) {
                         applyUpdate(t => {
@@ -73,6 +77,7 @@ export function updateCommand(args: string[]): void {
                     }
                     break;
                 case '--rm-file':
+                case '-d':
                     const rmPath = args[++i];
                     if (rmPath) {
                         applyUpdate(t => {
@@ -83,6 +88,7 @@ export function updateCommand(args: string[]): void {
                     }
                     break;
                 case '--read-file':
+                case '-r':
                     const readPath = args[++i];
                     if (readPath) {
                         applyUpdate(t => {

@@ -12,9 +12,10 @@ export function newCommand(args: string[]): void {
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
         if (!arg) continue;
-        if (arg.startsWith('--')) {
+        if (arg.startsWith('-')) {
             switch (arg) {
                 case '--status':
+                case '-s':
                     const s = args[++i];
                     if (s && ['todo', 'wip', 'done', 'pending', 'long', 'closed'].includes(s)) {
                         status = s as TaskStatus;
@@ -24,6 +25,7 @@ export function newCommand(args: string[]): void {
                     }
                     break;
                 case '--priority':
+                case '-p':
                     const p = args[++i];
                     if (p) priority = p;
                     else {
@@ -32,6 +34,7 @@ export function newCommand(args: string[]): void {
                     }
                     break;
                 case '--body':
+                case '-b':
                     const b = args[++i];
                     if (b) bodies.push(b);
                     else {
@@ -40,6 +43,7 @@ export function newCommand(args: string[]): void {
                     }
                     break;
                 case '--add-file':
+                case '-a':
                     const af = args[++i];
                     if (af) addFiles.push(af);
                     else {
@@ -48,6 +52,7 @@ export function newCommand(args: string[]): void {
                     }
                     break;
                 case '--read-file':
+                case '-r':
                     const rf = args[++i];
                     if (rf) readFiles.push(rf);
                     else {
