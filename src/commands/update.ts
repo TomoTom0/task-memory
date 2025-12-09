@@ -2,6 +2,23 @@ import { loadTasks, saveTasks, getTaskById } from '../store';
 import type { Task } from '../types';
 
 export function updateCommand(args: string[]): void {
+    if (args.includes('--help') || args.includes('-h')) {
+        console.log(`
+Usage: tm update <id...> [options]
+
+Options:
+  --status, -s <status>    Update status (todo, wip, done, pending, long, closed)
+  --priority, -p <value>   Update priority
+  --version, -v <value>    Update version
+  --goal, -g <text>        Update completion goal
+  --body, -b <text>        Append body text
+  --add-file, -a <path>    Add editable file
+  --rm-file, -d <path>     Remove editable file
+  --read-file, -r <path>   Add read-only file
+`);
+        return;
+    }
+
     const tasks = loadTasks();
     let currentTargetIds: string[] = [];
     let updated = false;
@@ -49,6 +66,15 @@ export function updateCommand(args: string[]): void {
                         applyUpdate(t => t.priority = priority);
                     } else {
                         console.error('Error: --priority requires a value.');
+                    }
+                    break;
+                case '--version':
+                case '-v':
+                    const version = args[++i];
+                    if (version) {
+                        applyUpdate(t => t.version = version);
+                    } else {
+                        console.error('Error: --version requires a value.');
                     }
                     break;
                 case '--goal':

@@ -2,6 +2,21 @@ import { loadTasks, saveTasks, getNextId } from '../store';
 import type { Task, TaskStatus } from '../types';
 
 export function newCommand(args: string[]): void {
+    if (args.includes('--help') || args.includes('-h')) {
+        console.log(`
+Usage: tm new <summary> [options]
+
+Options:
+  --status, -s <status>    Set initial status (todo, wip, done, pending, long, closed)
+  --priority, -p <value>   Set priority
+  --goal, -g <text>        Set completion goal
+  --body, -b <text>        Add initial body text
+  --add-file, -a <path>    Add editable file
+  --read-file, -r <path>   Add read-only file
+`);
+        return;
+    }
+
     const summaryParts: string[] = [];
     let status: TaskStatus = 'todo';
     let priority: string | undefined;
@@ -92,6 +107,7 @@ export function newCommand(args: string[]): void {
         id,
         status,
         priority,
+        version: 'tbd',
         goal,
         summary,
         bodies: bodies.map(text => ({ text, created_at: now })),

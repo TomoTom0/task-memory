@@ -59,6 +59,13 @@ Supports context switching:
 tm up 1 -s done 2 -s wip
 ```
 
+Update version:
+```bash
+tm update 1 --version 1.0.0
+# or
+tm u 1 -v 1.0.0
+```
+
 ### Get Task Details
 ```bash
 tm get 1
