@@ -43,4 +43,12 @@ describe('tm new argument parsing', () => {
         expect(tasks[0].summary).toBe('Task Before');
         expect(tasks[0].status).toBe('done');
     });
+
+    it('should create task with goal', () => {
+        newCommand(['Task With Goal', '--goal', 'Complete this']);
+        const tasks = loadTasks();
+        expect(tasks.length).toBe(1);
+        expect(tasks[0].summary).toBe('Task With Goal');
+        expect(tasks[0].goal).toBe('Complete this');
+    });
 });

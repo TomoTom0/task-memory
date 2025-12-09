@@ -16,15 +16,22 @@ switch (command) {
     newCommand(commandArgs);
     break;
   case 'list':
-    listCommand();
+  case 'ls':
+  case 'l':
+    listCommand(commandArgs);
     break;
   case 'get':
+  case 'g':
     getCommand(commandArgs);
     break;
   case 'finish':
+  case 'fin':
+  case 'f':
     finishCommand(commandArgs);
     break;
   case 'update':
+  case 'up':
+  case 'u':
     updateCommand(commandArgs);
     break;
   case 'env':
@@ -47,26 +54,30 @@ Commands:
     Options:
       --status, -s <status>    Set initial status (todo, wip, done, pending, long, closed)
       --priority, -p <value>   Set priority
+      --goal, -g <text>        Set completion goal
       --body, -b <text>        Add initial body text
       --add-file, -a <path>    Add editable file
       --read-file, -r <path>   Add read-only file
 
-  list
-    List active tasks (todo, wip, pending, long).
+  list (ls, l) [options]
+    List active tasks (todo, wip).
+    Options:
+      --all, -a    Include pending and long tasks
 
-  get <id...> [options]
+  get (g) <id...> [options]
     Get task details (JSON).
     Options:
       --all, -a, --history, -h     Show full history of bodies
 
-  finish <id...>
+  finish (fin, f) <id...>
     Mark task(s) as done.
 
-  update <id...> [options]
+  update (up, u) <id...> [options]
     Update task(s). Supports context switching.
     Options:
       --status, -s <status>    Update status (todo, wip, done, pending, long, closed)
       --priority, -p <value>   Update priority
+      --goal, -g <text>        Update completion goal
       --body, -b <text>        Append body text
       --add-file, -a <path>    Add editable file
       --rm-file, -d <path>     Remove editable file
@@ -75,7 +86,7 @@ Commands:
   env
     Show the current task data file path.
 
-  review <subcommand> [args]
+  review (rev, tmr) <subcommand> [args]
     Manage reviews.
     Subcommands: new, list, get, update, return, accept, reject
 

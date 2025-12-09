@@ -51,6 +51,15 @@ export function updateCommand(args: string[]): void {
                         console.error('Error: --priority requires a value.');
                     }
                     break;
+                case '--goal':
+                case '-g':
+                    const goal = args[++i];
+                    if (goal) {
+                        applyUpdate(t => t.goal = goal);
+                    } else {
+                        console.error('Error: --goal requires a value.');
+                    }
+                    break;
                 case '--body':
                 case '-b':
                     const bodyText = args[++i];

@@ -132,10 +132,30 @@ function handleGet(args: string[]) {
 
     if (showHistory) {
         console.log(JSON.stringify(review, null, 2));
-    } else {
-        const { bodies, ...rest } = review;
-        console.log(JSON.stringify(rest, null, 2));
+        return;
     }
+
+    console.log(`Review: ${review.title}`);
+    console.log(`ID: ${review.id}`);
+    console.log(`Status: ${review.status}`);
+    console.log('---');
+    console.log('Description:');
+    // The first body is the description
+    const description = review.bodies[0]?.text || review.body;
+    console.log(description);
+
+    // Subsequent bodies are answers/updates
+    if (review.bodies.length > 1) {
+        console.log('\nAnswers:');
+        review.bodies.slice(1).forEach((b, i) => {
+            console.log(`\n[${i + 1}] ${b.created_at}`);
+            console.log(b.text);
+        });
+    }
+
+    console.log(`
+To reply to this review, run:
+tm review return ${id} --body "Your reply here"`);
 }
 
 function handleUpdate(args: string[]) {

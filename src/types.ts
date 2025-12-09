@@ -14,6 +14,7 @@ export interface Task {
     id: string;
     status: TaskStatus;
     priority?: string;
+    goal?: string;
     summary: string;
     bodies: TaskBody[];
     files: TaskFiles;

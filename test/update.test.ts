@@ -99,4 +99,15 @@ describe('tm update argument parsing', () => {
         expect(tasks[1].status).toBe('done');
         expect(tasks[2].status).toBe('done');
     });
+
+    it('should update task goal', () => {
+        setupTasks([
+            { id: 'TASK-1', status: 'todo', summary: 'Goal Task', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' }
+        ]);
+
+        updateCommand(['1', '--goal', 'New Goal']);
+
+        const tasks = loadTasks();
+        expect(tasks[0].goal).toBe('New Goal');
+    });
 });

@@ -5,6 +5,7 @@ export function newCommand(args: string[]): void {
     const summaryParts: string[] = [];
     let status: TaskStatus = 'todo';
     let priority: string | undefined;
+    let goal: string | undefined;
     const bodies: string[] = [];
     const addFiles: string[] = [];
     const readFiles: string[] = [];
@@ -21,6 +22,15 @@ export function newCommand(args: string[]): void {
                         status = s as TaskStatus;
                     } else {
                         console.error(`Error: Invalid status '${s}'. Allowed: todo, wip, done, pending, long, closed.`);
+                        return;
+                    }
+                    break;
+                case '--goal':
+                case '-g':
+                    const g = args[++i];
+                    if (g) goal = g;
+                    else {
+                        console.error('Error: --goal requires a value.');
                         return;
                     }
                     break;
@@ -82,6 +92,7 @@ export function newCommand(args: string[]): void {
         id,
         status,
         priority,
+        goal,
         summary,
         bodies: bodies.map(text => ({ text, created_at: now })),
         files: {

@@ -25,20 +25,67 @@ bun link
 
 詳細な使い方は [docs/usage/index.md](docs/usage/index.md) を参照してください。
 
-### クイックスタート
+## Usage
 
+### Create a Task
 ```bash
-# タスクの作成
-tm new "認証機能のリファクタリング"
+tm new "Refactor auth" --status wip --body "Starting now" --priority high --goal "Complete by Friday"
+```
+Aliases: `tm n` (not yet impl), `tm new`
 
-# タスク一覧
+### List Tasks
+```bash
 tm list
+# or
+tm ls
+tm l
+```
+By default, shows `todo` and `wip` tasks.
+To include `pending` and `long` tasks:
+```bash
+tm list --all
+tm ls -a
+```
 
-# タスクの更新
-tm update 1 --status wip --body "JWTの実装を開始"
+### Update a Task
+```bash
+tm update 1 --status done
+# or
+tm up 1 -s done
+tm u 1 -s done
+```
+Supports context switching:
+```bash
+tm up 1 -s done 2 -s wip
+```
 
-# タスクの完了
+### Get Task Details
+```bash
+tm get 1
+# or
+tm g 1
+```
+
+### Finish a Task
+```bash
 tm finish 1
+# or
+tm fin 1
+tm f 1
+```
+
+### Reviews
+```bash
+tm review new "Design Review" --body "Check this out"
+# or
+tm rev new ...
+tm tmr new ...
+```
+Subcommands: `new`, `list`, `get`, `update`, `return`, `accept`, `reject`.
+
+### Environment
+```bash
+tm env
 ```
 
 ## 開発
