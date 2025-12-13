@@ -30,6 +30,10 @@ Options:
         if (arg.startsWith('--')) {
             lastActionWasOption = true;
             if (arg === '--body') {
+                if (currentTargetIds.length === 0) {
+                    console.error('Error: --body must be preceded by at least one task ID.');
+                    return;
+                }
                 const bodyText = args[++i];
                 if (bodyText) {
                     const now = new Date().toISOString();
