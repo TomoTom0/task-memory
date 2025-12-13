@@ -43,7 +43,7 @@ describe('tm update argument parsing', () => {
         updateCommand(['1', '--status', 'wip']);
 
         const tasks = loadTasks();
-        expect(tasks[0].status).toBe('wip');
+        expect(tasks[0]!.status).toBe('wip');
     });
 
     it('should update multiple tasks with same option', () => {
@@ -55,8 +55,8 @@ describe('tm update argument parsing', () => {
         updateCommand(['1', '2', '--status', 'done']);
 
         const tasks = loadTasks();
-        expect(tasks[0].status).toBe('done');
-        expect(tasks[1].status).toBe('done');
+        expect(tasks[0]!.status).toBe('done');
+        expect(tasks[1]!.status).toBe('done');
     });
 
     it('should switch context correctly', () => {
@@ -68,8 +68,8 @@ describe('tm update argument parsing', () => {
         updateCommand(['1', '--status', 'wip', '2', '--status', 'done']);
 
         const tasks = loadTasks();
-        expect(tasks[0].status).toBe('wip');
-        expect(tasks[1].status).toBe('done');
+        expect(tasks[0]!.status).toBe('wip');
+        expect(tasks[1]!.status).toBe('done');
     });
 
     it('should handle body updates', () => {
@@ -80,8 +80,8 @@ describe('tm update argument parsing', () => {
         updateCommand(['1', '--body', 'New update']);
 
         const tasks = loadTasks();
-        expect(tasks[0].bodies.length).toBe(1);
-        expect(tasks[0].bodies[0].text).toBe('New update');
+        expect(tasks[0]!.bodies.length).toBe(1);
+        expect(tasks[0]!.bodies[0]!.text).toBe('New update');
     });
 
     it('should handle interleaved IDs and options', () => {
@@ -95,8 +95,30 @@ describe('tm update argument parsing', () => {
         updateCommand(['1', '--status', 'wip', '2', '3', '--status', 'done']);
 
         const tasks = loadTasks();
-        expect(tasks[0].status).toBe('wip');
-        expect(tasks[1].status).toBe('done');
-        expect(tasks[2].status).toBe('done');
+        expect(tasks[0]!.status).toBe('wip');
+        expect(tasks[1]!.status).toBe('done');
+        expect(tasks[2]!.status).toBe('done');
+    });
+
+    it('should update task goal', () => {
+        setupTasks([
+            { id: 'TASK-1', status: 'todo', summary: 'Goal Task', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' }
+        ]);
+
+        updateCommand(['1', '--goal', 'New Goal']);
+
+        const tasks = loadTasks();
+        expect(tasks[0]!.goal).toBe('New Goal');
+    });
+
+    it('should update task version', () => {
+        setupTasks([
+            { id: 'TASK-1', status: 'todo', summary: 'Version Task', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' }
+        ]);
+
+        updateCommand(['1', '--version', '1.0.0']);
+
+        const tasks = loadTasks();
+        expect(tasks[0]!.version).toBe('1.0.0');
     });
 });

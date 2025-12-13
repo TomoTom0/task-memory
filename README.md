@@ -25,20 +25,96 @@ bun link
 
 詳細な使い方は [docs/usage/index.md](docs/usage/index.md) を参照してください。
 
-### クイックスタート
+## Usage
 
+### Create a Task
 ```bash
-# タスクの作成
-tm new "認証機能のリファクタリング"
+tm new "Refactor auth" --status wip --body "Starting now" --priority high --goal "Complete by Friday"
+```
+Aliases: `tm n` (not yet impl), `tm new`
 
-# タスク一覧
+### List Tasks
+```bash
 tm list
+# or
+tm ls
+tm l
+```
+By default, shows `todo` and `wip` tasks.
 
-# タスクの更新
-tm update 1 --status wip --body "JWTの実装を開始"
+**Filtering Options:**
+```bash
+# すべてのタスク（done/closed含む）を表示
+tm list --status-all
+tm ls -a
 
-# タスクの完了
+# オープンなタスク（todo, wip, pending, long）を表示
+tm list --open
+
+# ステータスでフィルタリング
+tm list --status pending
+tm ls -s wip
+
+# 優先度でフィルタリング
+tm list --priority high
+
+# バージョンでフィルタリング
+tm list --version 1.0.0
+tm list --tbd           # version が tbd のタスク
+tm list --released      # リリース済み（version が tbd 以外）のタスク
+
+# 表示件数を制限
+tm list --head 5        # 最初の5件
+tm list --tail 10       # 最後の10件
+tm list --head          # 最初の10件（デフォルト）
+```
+
+### Update a Task
+```bash
+tm update 1 --status done
+# or
+tm up 1 -s done
+tm u 1 -s done
+```
+Supports context switching:
+```bash
+tm up 1 -s done 2 -s wip
+```
+
+Update version:
+```bash
+tm update 1 --version 1.0.0
+# or
+tm u 1 -v 1.0.0
+```
+
+### Get Task Details
+```bash
+tm get 1
+# or
+tm g 1
+```
+
+### Finish a Task
+```bash
 tm finish 1
+# or
+tm fin 1
+tm f 1
+```
+
+### Reviews
+```bash
+tm review new "Design Review" --body "Check this out"
+# or
+tm rev new ...
+tm tmr new ...
+```
+Subcommands: `new`, `list`, `get`, `update`, `return`, `accept`, `reject`.
+
+### Environment
+```bash
+tm env
 ```
 
 ## 開発

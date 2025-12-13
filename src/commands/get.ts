@@ -1,9 +1,19 @@
 import { loadTasks, getTaskById } from '../store';
 
 export function getCommand(args: string[]): void {
+    if (args.includes('--help') || args.includes('-h')) {
+        console.log(`
+Usage: tm get <id...> [options]
+
+Options:
+  --all, -a, --history     Show full history of bodies
+`);
+        return;
+    }
+
     // Parse options
-    const showAllHistory = args.includes('--all') || args.includes('--history');
-    const ids = args.filter(arg => !arg.startsWith('--'));
+    const showAllHistory = args.includes('--all') || args.includes('-a') || args.includes('--history');
+    const ids = args.filter(arg => !arg.startsWith('-'));
 
     if (ids.length === 0) {
         console.error('Error: Task ID is required. Usage: tm get <id...> [options]');
@@ -20,7 +30,10 @@ export function getCommand(args: string[]): void {
             // We need to filter bodies if not showAllHistory
             const taskOutput = { ...task };
             if (!showAllHistory && task.bodies.length > 0) {
-                taskOutput.bodies = [task.bodies[task.bodies.length - 1]];
+                const lastBody = task.bodies[task.bodies.length - 1];
+                if (lastBody) {
+                    taskOutput.bodies = [lastBody];
+                }
             }
             result.push(taskOutput);
         } else {

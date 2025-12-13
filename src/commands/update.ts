@@ -2,6 +2,23 @@ import { loadTasks, saveTasks, getTaskById } from '../store';
 import type { Task } from '../types';
 
 export function updateCommand(args: string[]): void {
+    if (args.includes('--help') || args.includes('-h')) {
+        console.log(`
+Usage: tm update <id...> [options]
+
+Options:
+  --status, -s <status>    Update status (todo, wip, done, pending, long, closed)
+  --priority, -p <value>   Update priority
+  --version, -v <value>    Update version
+  --goal, -g <text>        Update completion goal
+  --body, -b <text>        Append body text
+  --add-file, -a <path>    Add editable file
+  --rm-file, -d <path>     Remove editable file
+  --read-file, -r <path>   Add read-only file
+`);
+        return;
+    }
+
     const tasks = loadTasks();
     let currentTargetIds: string[] = [];
     let updated = false;
@@ -27,20 +44,50 @@ export function updateCommand(args: string[]): void {
 
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
+        if (!arg) continue;
 
-        if (arg.startsWith('--')) {
+        if (arg.startsWith('-')) {
             // Option handling
             lastActionWasOption = true;
             switch (arg) {
                 case '--status':
+                case '-s':
                     const status = args[++i];
-                    if (status && ['todo', 'wip', 'done'].includes(status)) {
+                    if (status && ['todo', 'wip', 'done', 'pending', 'long', 'closed'].includes(status)) {
                         applyUpdate(t => t.status = status as any);
                     } else {
-                        console.error(`Error: Invalid status '${status}'. Allowed: todo, wip, done.`);
+                        console.error(`Error: Invalid status '${status}'. Allowed: todo, wip, done, pending, long, closed.`);
+                    }
+                    break;
+                case '--priority':
+                case '-p':
+                    const priority = args[++i];
+                    if (priority) {
+                        applyUpdate(t => t.priority = priority);
+                    } else {
+                        console.error('Error: --priority requires a value.');
+                    }
+                    break;
+                case '--version':
+                case '-v':
+                    const version = args[++i];
+                    if (version) {
+                        applyUpdate(t => t.version = version);
+                    } else {
+                        console.error('Error: --version requires a value.');
+                    }
+                    break;
+                case '--goal':
+                case '-g':
+                    const goal = args[++i];
+                    if (goal) {
+                        applyUpdate(t => t.goal = goal);
+                    } else {
+                        console.error('Error: --goal requires a value.');
                     }
                     break;
                 case '--body':
+                case '-b':
                     const bodyText = args[++i];
                     if (bodyText) {
                         applyUpdate(t => t.bodies.push({
@@ -52,6 +99,7 @@ export function updateCommand(args: string[]): void {
                     }
                     break;
                 case '--add-file':
+                case '-a':
                     const addPath = args[++i];
                     if (addPath) {
                         applyUpdate(t => {
@@ -64,6 +112,7 @@ export function updateCommand(args: string[]): void {
                     }
                     break;
                 case '--rm-file':
+                case '-d':
                     const rmPath = args[++i];
                     if (rmPath) {
                         applyUpdate(t => {
@@ -74,6 +123,7 @@ export function updateCommand(args: string[]): void {
                     }
                     break;
                 case '--read-file':
+                case '-r':
                     const readPath = args[++i];
                     if (readPath) {
                         applyUpdate(t => {
