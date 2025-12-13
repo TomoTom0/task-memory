@@ -24,7 +24,8 @@ Options:
                 return;
             }
         } else if (arg.startsWith('--')) {
-            console.warn(`Warning: Unknown option '${arg}'.`);
+            console.error(`Error: Unknown option '${arg}'.`);
+            return;
         } else {
             ids.push(arg);
         }

@@ -14,6 +14,7 @@ export interface TaskBuildOptions {
 /**
  * 引数配列からタスク作成オプションをパースする
  * newCommandとreview acceptで共通利用
+ * @throws Error 無効なオプションが見つかった場合
  */
 export function parseTaskArgs(args: string[]): TaskBuildOptions {
     const summaryParts: string[] = [];
@@ -34,33 +35,57 @@ export function parseTaskArgs(args: string[]): TaskBuildOptions {
                     const s = args[++i];
                     if (s && ['todo', 'wip', 'done', 'pending', 'long', 'closed'].includes(s)) {
                         status = s as TaskStatus;
+                    } else {
+                        throw new Error(`Invalid status '${s}'. Allowed: todo, wip, done, pending, long, closed.`);
                     }
                     break;
                 case '--goal':
                 case '-g':
                     const g = args[++i];
-                    if (g) goal = g;
+                    if (g) {
+                        goal = g;
+                    } else {
+                        throw new Error('--goal requires a value.');
+                    }
                     break;
                 case '--priority':
                 case '-p':
                     const p = args[++i];
-                    if (p) priority = p;
+                    if (p) {
+                        priority = p;
+                    } else {
+                        throw new Error('--priority requires a value.');
+                    }
                     break;
                 case '--body':
                 case '-b':
                     const b = args[++i];
-                    if (b) bodies.push(b);
+                    if (b) {
+                        bodies.push(b);
+                    } else {
+                        throw new Error('--body requires a value.');
+                    }
                     break;
                 case '--add-file':
                 case '-a':
                     const af = args[++i];
-                    if (af) addFiles.push(af);
+                    if (af) {
+                        addFiles.push(af);
+                    } else {
+                        throw new Error('--add-file requires a path.');
+                    }
                     break;
                 case '--read-file':
                 case '-r':
                     const rf = args[++i];
-                    if (rf) readFiles.push(rf);
+                    if (rf) {
+                        readFiles.push(rf);
+                    } else {
+                        throw new Error('--read-file requires a path.');
+                    }
                     break;
+                default:
+                    throw new Error(`Unknown option '${arg}'.`);
             }
         } else {
             summaryParts.push(arg);

@@ -17,7 +17,13 @@ Options:
         return;
     }
 
-    const options = parseTaskArgs(args);
+    let options;
+    try {
+        options = parseTaskArgs(args);
+    } catch (error) {
+        console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+        return;
+    }
 
     if (!options.summary) {
         console.error('Error: Task summary is required. Usage: tm new <summary> [options]');

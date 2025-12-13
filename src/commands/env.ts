@@ -11,5 +11,11 @@ Description:
         return;
     }
 
+    // env command doesn't accept any arguments
+    if (args.length > 0) {
+        console.error(`Error: env command doesn't accept arguments.`);
+        return;
+    }
+
     console.log(getDbPath());
 }

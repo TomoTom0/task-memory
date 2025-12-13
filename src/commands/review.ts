@@ -85,6 +85,9 @@ function handleNew(args: string[]) {
         if (args[i] === '--body') {
             body = args[i + 1] || '';
             i += 2;
+        } else if (args[i].startsWith('--')) {
+            console.error(`Error: Unknown option '${args[i]}'.`);
+            process.exit(1);
         } else {
             i++;
         }
@@ -206,6 +209,9 @@ function handleUpdate(args: string[]) {
         } else if (args[i] === '--body') {
             body = args[i + 1];
             i += 2;
+        } else if (args[i].startsWith('--')) {
+            console.error(`Error: Unknown option '${args[i]}'.`);
+            process.exit(1);
         } else {
             i++;
         }
@@ -297,15 +303,19 @@ function handleAccept(args: string[]) {
     const now = new Date().toISOString();
 
     for (const taskArgs of newTasksArgs) {
-        // We need to parse taskArgs similar to newCommand.
-        const options = parseTaskArgs(taskArgs);
+        try {
+            const options = parseTaskArgs(taskArgs);
 
-        if (options.summary) {
-            const newTaskId = getNextId(tasks);
-            const newTask = buildTask(newTaskId, options);
-            tasks.push(newTask);
-            createdTaskIds.push(newTaskId);
-            console.log(`Created task ${newTaskId} from review`);
+            if (options.summary) {
+                const newTaskId = getNextId(tasks);
+                const newTask = buildTask(newTaskId, options);
+                tasks.push(newTask);
+                createdTaskIds.push(newTaskId);
+                console.log(`Created task ${newTaskId} from review`);
+            }
+        } catch (error) {
+            console.error(`Error parsing task args: ${error instanceof Error ? error.message : String(error)}`);
+            process.exit(1);
         }
     }
 

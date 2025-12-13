@@ -13,7 +13,18 @@ Options:
 
     // Parse options
     const showAllHistory = args.includes('--all') || args.includes('-a') || args.includes('--history');
-    const ids = args.filter(arg => !arg.startsWith('-'));
+    const ids: string[] = [];
+
+    for (const arg of args) {
+        if (arg.startsWith('-')) {
+            if (arg !== '--all' && arg !== '-a' && arg !== '--history') {
+                console.error(`Error: Unknown option '${arg}'.`);
+                return;
+            }
+        } else {
+            ids.push(arg);
+        }
+    }
 
     if (ids.length === 0) {
         console.error('Error: Task ID is required. Usage: tm get <id...> [options]');
