@@ -10,10 +10,12 @@ Options:
   --status-all, -a Show all tasks (including done/closed)
   --open           Show all open tasks (todo, wip, pending, long)
   --priority <p>   Filter by priority
-  --status <s>     Filter by status
+  --status, -s <s> Filter by status
   --version <v>    Filter by version
   --tbd            Filter by version 'tbd' (includes closed/done)
   --released       Filter by released tasks (non-tbd version, includes closed/done)
+  --head [N]       Show first N tasks (default: 10)
+  --tail [N]       Show last N tasks (default: 10)
 `);
         return;
     }
@@ -26,7 +28,10 @@ Options:
     const filterPriority = priorityIndex !== -1 ? args[priorityIndex + 1] : null;
 
     // Filter by status
-    const statusIndex = args.indexOf('--status');
+    let statusIndex = args.indexOf('--status');
+    if (statusIndex === -1) {
+        statusIndex = args.indexOf('-s');
+    }
     const filterStatus = statusIndex !== -1 ? args[statusIndex + 1] : null;
 
     // Filter by version
@@ -44,6 +49,31 @@ Options:
         showAll = true;
     }
 
+    // Head and tail options
+    const headIndex = args.indexOf('--head');
+    let headCount: number | null = null;
+    if (headIndex !== -1) {
+        const nextArg = args[headIndex + 1];
+        if (nextArg && !nextArg.startsWith('-')) {
+            const parsed = parseInt(nextArg, 10);
+            headCount = isNaN(parsed) ? 10 : parsed;
+        } else {
+            headCount = 10;
+        }
+    }
+
+    const tailIndex = args.indexOf('--tail');
+    let tailCount: number | null = null;
+    if (tailIndex !== -1) {
+        const nextArg = args[tailIndex + 1];
+        if (nextArg && !nextArg.startsWith('-')) {
+            const parsed = parseInt(nextArg, 10);
+            tailCount = isNaN(parsed) ? 10 : parsed;
+        } else {
+            tailCount = 10;
+        }
+    }
+
     const tasks = loadTasks();
     const activeTasks = tasks.filter(t => {
         // Apply filters first
@@ -56,6 +86,9 @@ Options:
         }
 
         // Visibility logic
+        // If status is explicitly filtered, show those tasks regardless of other visibility rules
+        if (filterStatus) return true;
+
         if (showAll) return true;
 
         if (t.status === 'done' || t.status === 'closed') return false;
@@ -68,11 +101,37 @@ Options:
     const reviews = loadReviews();
     const checkingReviews = reviews.filter(r => r.status === 'checking');
 
-    if (activeTasks.length === 0 && checkingReviews.length === 0) {
+    // Apply head/tail to tasks
+    let displayTasks = activeTasks;
+    if (headCount !== null) {
+        displayTasks = displayTasks.slice(0, headCount);
+    } else if (tailCount !== null) {
+        displayTasks = displayTasks.slice(-tailCount);
+    }
+
+    // Apply head/tail to reviews
+    let displayReviews = checkingReviews;
+    if (headCount !== null) {
+        const remaining = headCount - displayTasks.length;
+        if (remaining > 0) {
+            displayReviews = displayReviews.slice(0, remaining);
+        } else {
+            displayReviews = [];
+        }
+    } else if (tailCount !== null) {
+        const totalItems = displayTasks.length + checkingReviews.length;
+        const skipTasks = Math.max(0, totalItems - tailCount);
+        if (skipTasks >= displayTasks.length) {
+            const reviewsToShow = tailCount - displayTasks.length;
+            displayReviews = displayReviews.slice(-reviewsToShow);
+        }
+    }
+
+    if (displayTasks.length === 0 && displayReviews.length === 0) {
         return;
     }
 
-    activeTasks.forEach(task => {
+    displayTasks.forEach(task => {
         // Format: 1: Summary [status] (Priority: P) [v: 1.0]
         // Extract number from ID for display if possible, else use full ID
         const match = task.id.match(/^TASK-(\d+)$/);
@@ -91,7 +150,7 @@ Options:
         console.log(`${displayId}: ${task.summary} [${task.status}]${priorityStr}${versionStr}`);
     });
 
-    checkingReviews.forEach(review => {
+    displayReviews.forEach(review => {
         console.log(`${review.id}: ${review.title} [${review.status}]`);
     });
 }

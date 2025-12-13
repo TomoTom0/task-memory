@@ -70,7 +70,15 @@ Commands:
   list (ls, l) [options]
     List active tasks (todo, wip).
     Options:
-      --all, -a    Include pending and long tasks
+      --status-all, -a         Show all tasks (including done/closed)
+      --open                   Show all open tasks (todo, wip, pending, long)
+      --priority <p>           Filter by priority
+      --status, -s <status>    Filter by status
+      --version <v>            Filter by version
+      --tbd                    Filter by version 'tbd' (includes closed/done)
+      --released               Filter by released tasks (non-tbd version)
+      --head [N]               Show first N tasks (default: 10)
+      --tail [N]               Show last N tasks (default: 10)
 
   get (g) <id...> [options]
     Get task details (JSON).

@@ -40,7 +40,69 @@ tm new "認証機能のリファクタリング"
 
 ```bash
 tm list
+# または短縮形
+tm ls
+tm l
 # 出力: 1: 認証機能のリファクタリング [todo]
+```
+
+#### フィルタリングオプション
+
+タスク一覧は様々な条件でフィルタリングできます。
+
+**ステータスによるフィルタリング:**
+```bash
+# すべてのタスク（done/closed含む）を表示
+tm list --status-all
+tm ls -a
+
+# オープンなタスク（todo, wip, pending, long）を表示
+tm list --open
+
+# 特定のステータスのタスクのみ表示
+tm list --status pending
+tm ls -s wip
+tm ls -s done
+```
+
+**優先度によるフィルタリング:**
+```bash
+tm list --priority high
+tm list --priority medium
+```
+
+**バージョンによるフィルタリング:**
+```bash
+# 特定のバージョン
+tm list --version 1.0.0
+
+# TBD（未リリース）のタスク
+tm list --tbd
+
+# リリース済みのタスク（version が tbd 以外）
+tm list --released
+```
+
+**表示件数の制限:**
+```bash
+# 最初の5件のみ表示
+tm list --head 5
+
+# 最後の10件のみ表示
+tm list --tail 10
+
+# デフォルト値（10件）で制限
+tm list --head
+tm list --tail
+```
+
+**組み合わせ:**
+```bash
+# リリース済みタスクの最初の3件
+tm list --released --head 3
+
+# 高優先度のpendingタスク
+tm list --priority high --status pending
 ```
 
 ### 3. タスクの更新 (`tm update`)

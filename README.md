@@ -41,10 +41,32 @@ tm ls
 tm l
 ```
 By default, shows `todo` and `wip` tasks.
-To include `pending` and `long` tasks:
+
+**Filtering Options:**
 ```bash
-tm list --all
+# すべてのタスク（done/closed含む）を表示
+tm list --status-all
 tm ls -a
+
+# オープンなタスク（todo, wip, pending, long）を表示
+tm list --open
+
+# ステータスでフィルタリング
+tm list --status pending
+tm ls -s wip
+
+# 優先度でフィルタリング
+tm list --priority high
+
+# バージョンでフィルタリング
+tm list --version 1.0.0
+tm list --tbd           # version が tbd のタスク
+tm list --released      # リリース済み（version が tbd 以外）のタスク
+
+# 表示件数を制限
+tm list --head 5        # 最初の5件
+tm list --tail 10       # 最後の10件
+tm list --head          # 最初の10件（デフォルト）
 ```
 
 ### Update a Task
