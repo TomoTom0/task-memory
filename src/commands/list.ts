@@ -20,59 +20,90 @@ Options:
         return;
     }
 
-    let showAll = args.includes('--status-all') || args.includes('-a');
-    const showOpen = args.includes('--open');
+    function parseNumericOption(optionName: string, defaultValue: number): number | null {
+        const index = args.indexOf(optionName);
+        if (index === -1) return null;
 
-    // Filter by priority
-    const priorityIndex = args.indexOf('--priority');
-    const filterPriority = priorityIndex !== -1 ? args[priorityIndex + 1] : null;
-
-    // Filter by status
-    let statusIndex = args.indexOf('--status');
-    if (statusIndex === -1) {
-        statusIndex = args.indexOf('-s');
-    }
-    const filterStatus = statusIndex !== -1 ? args[statusIndex + 1] : null;
-
-    // Filter by version
-    let versionIndex = args.indexOf('--version');
-    let filterVersion = versionIndex !== -1 ? args[versionIndex + 1] : null;
-
-    // --tbd alias: equivalent to --version tbd -a
-    if (args.includes('--tbd')) {
-        filterVersion = 'tbd';
-        showAll = true;
+        const nextArg = args[index + 1];
+        if (nextArg && !nextArg.startsWith('-')) {
+            const parsed = parseInt(nextArg, 10);
+            return isNaN(parsed) ? defaultValue : parsed;
+        }
+        return defaultValue;
     }
 
-    const released = args.includes('--released');
-    if (released) {
-        showAll = true;
+    let showAll = false;
+    let showOpen = false;
+    let filterPriority: string | null = null;
+    let filterStatus: string | null = null;
+    let filterVersion: string | null = null;
+    let released = false;
+
+    for (let i = 0; i < args.length; i++) {
+        const arg = args[i];
+        switch (arg) {
+            case '--status-all':
+            case '-a':
+                showAll = true;
+                break;
+            case '--open':
+                showOpen = true;
+                break;
+            case '--priority':
+                if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
+                    filterPriority = args[++i];
+                } else {
+                    console.error("Error: --priority requires a value.");
+                    return;
+                }
+                break;
+            case '--status':
+            case '-s':
+                if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
+                    filterStatus = args[++i];
+                } else {
+                    console.error("Error: --status requires a value.");
+                    return;
+                }
+                break;
+            case '--version':
+                if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
+                    filterVersion = args[++i];
+                } else {
+                    console.error("Error: --version requires a value.");
+                    return;
+                }
+                break;
+            case '--tbd':
+                filterVersion = 'tbd';
+                showAll = true;
+                break;
+            case '--released':
+                released = true;
+                showAll = true;
+                break;
+            case '--head':
+            case '--tail':
+                // Skip numeric option handling here, will be parsed separately
+                const nextArg = args[i + 1];
+                if (nextArg && !nextArg.startsWith('-')) {
+                    i++; // Skip the value
+                }
+                break;
+            default:
+                if (arg.startsWith('--')) {
+                    console.warn(`Warning: Unknown option '${arg}'.`);
+                } else if (!arg.match(/^\d+$/)) {
+                    // list command does not take positional arguments (except numeric ones for head/tail)
+                    console.warn(`Warning: Unknown argument '${arg}'.`);
+                }
+                break;
+        }
     }
 
     // Head and tail options
-    const headIndex = args.indexOf('--head');
-    let headCount: number | null = null;
-    if (headIndex !== -1) {
-        const nextArg = args[headIndex + 1];
-        if (nextArg && !nextArg.startsWith('-')) {
-            const parsed = parseInt(nextArg, 10);
-            headCount = isNaN(parsed) ? 10 : parsed;
-        } else {
-            headCount = 10;
-        }
-    }
-
-    const tailIndex = args.indexOf('--tail');
-    let tailCount: number | null = null;
-    if (tailIndex !== -1) {
-        const nextArg = args[tailIndex + 1];
-        if (nextArg && !nextArg.startsWith('-')) {
-            const parsed = parseInt(nextArg, 10);
-            tailCount = isNaN(parsed) ? 10 : parsed;
-        } else {
-            tailCount = 10;
-        }
-    }
+    const headCount = parseNumericOption('--head', 10);
+    const tailCount = parseNumericOption('--tail', 10);
 
     const tasks = loadTasks();
     const activeTasks = tasks.filter(t => {
@@ -101,30 +132,23 @@ Options:
     const reviews = loadReviews();
     const checkingReviews = reviews.filter(r => r.status === 'checking');
 
-    // Apply head/tail to tasks
+    // Apply head/tail to tasks and reviews
     let displayTasks = activeTasks;
-    if (headCount !== null) {
-        displayTasks = displayTasks.slice(0, headCount);
-    } else if (tailCount !== null) {
-        displayTasks = displayTasks.slice(-tailCount);
-    }
-
-    // Apply head/tail to reviews
     let displayReviews = checkingReviews;
+
     if (headCount !== null) {
+        displayTasks = activeTasks.slice(0, headCount);
         const remaining = headCount - displayTasks.length;
-        if (remaining > 0) {
-            displayReviews = displayReviews.slice(0, remaining);
-        } else {
-            displayReviews = [];
-        }
+        displayReviews = remaining > 0 ? checkingReviews.slice(0, remaining) : [];
     } else if (tailCount !== null) {
-        const totalItems = displayTasks.length + checkingReviews.length;
-        const skipTasks = Math.max(0, totalItems - tailCount);
-        if (skipTasks >= displayTasks.length) {
-            const reviewsToShow = tailCount - displayTasks.length;
-            displayReviews = displayReviews.slice(-reviewsToShow);
-        }
+        const totalLength = activeTasks.length + checkingReviews.length;
+        const startIndex = Math.max(0, totalLength - tailCount);
+
+        const tasksToSkip = Math.min(startIndex, activeTasks.length);
+        displayTasks = activeTasks.slice(tasksToSkip);
+
+        const reviewsToSkip = Math.max(0, startIndex - activeTasks.length);
+        displayReviews = checkingReviews.slice(reviewsToSkip);
     }
 
     if (displayTasks.length === 0 && displayReviews.length === 0) {

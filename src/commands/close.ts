@@ -12,11 +12,24 @@ Options:
     return;
   }
 
-  const bodyIndex = args.indexOf('--body');
-  const bodyText = bodyIndex !== -1 ? args[bodyIndex + 1] : null;
+  const ids: string[] = [];
+  let bodyText: string | null = null;
 
-  // Filter out options to get IDs
-  const ids = args.filter(arg => !arg.startsWith('--') && arg !== bodyText);
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--body') {
+      if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
+        bodyText = args[++i];
+      } else {
+        console.error('Error: --body requires a text argument.');
+        return;
+      }
+    } else if (arg.startsWith('--')) {
+      console.warn(`Warning: Unknown option '${arg}'.`);
+    } else {
+      ids.push(arg);
+    }
+  }
 
   if (ids.length === 0) {
     console.error('Error: No task IDs provided.');
