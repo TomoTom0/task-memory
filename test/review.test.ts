@@ -29,7 +29,7 @@ describe('tm review command', () => {
         const reviews = loadReviews();
         expect(reviews.length).toBe(1);
         expect(reviews[0].title).toBe('Test Review');
-        expect(reviews[0].body).toBe('This is a test');
+        expect(reviews[0].bodies[0].text).toBe('This is a test');
         expect(reviews[0].status).toBe('todo');
     });
 
@@ -41,7 +41,7 @@ describe('tm review command', () => {
         reviewCommand(['update', id, '--status', 'wip', '--body', 'Working on it']);
         reviews = loadReviews();
         expect(reviews[0].status).toBe('wip');
-        expect(reviews[0].body).toBe('Working on it');
+        expect(reviews[0].bodies[reviews[0].bodies.length - 1].text).toBe('Working on it');
         expect(reviews[0].bodies.length).toBe(2);
     });
 

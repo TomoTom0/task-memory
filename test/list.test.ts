@@ -61,8 +61,8 @@ describe('tm list command', () => {
             { id: 'TASK-1', status: 'todo', summary: 'Todo Task', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
         ]);
         saveReviews([
-            { id: 'REVIEW-1', status: 'checking', title: 'Code Review', body: '', bodies: [], created_at: '', updated_at: '' },
-            { id: 'REVIEW-2', status: 'reviewed', title: 'Already Reviewed', body: '', bodies: [], created_at: '', updated_at: '' },
+            { id: 'REVIEW-1', status: 'checking', title: 'Code Review', bodies: [], created_at: '', updated_at: '' },
+            { id: 'REVIEW-2', status: 'reviewed', title: 'Already Reviewed', bodies: [], created_at: '', updated_at: '' },
         ]);
 
         listCommand([]);
@@ -76,8 +76,8 @@ describe('tm list command', () => {
     it('should not list reviews with status other than checking', () => {
         saveTasks([]);
         saveReviews([
-            { id: 'REVIEW-1', status: 'reviewed', title: 'Reviewed', body: '', bodies: [], created_at: '', updated_at: '' },
-            { id: 'REVIEW-2', status: 'accepted', title: 'Accepted', body: '', bodies: [], created_at: '', updated_at: '' },
+            { id: 'REVIEW-1', status: 'reviewed', title: 'Reviewed', bodies: [], created_at: '', updated_at: '' },
+            { id: 'REVIEW-2', status: 'accepted', title: 'Accepted', bodies: [], created_at: '', updated_at: '' },
         ]);
 
         listCommand([]);

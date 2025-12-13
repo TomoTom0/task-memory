@@ -102,7 +102,6 @@ function handleNew(args: string[]) {
     const newReview: Review = {
         id: newId,
         title,
-        body,
         bodies: [{ text: body, created_at: now }],
         status: 'todo',
         created_at: now,
@@ -158,7 +157,7 @@ function handleGet(args: string[]) {
     console.log('---');
     console.log('Description:');
     // The first body is the description
-    const description = review.bodies[0]?.text || review.body;
+    const description = review.bodies[0]?.text || '';
     console.log(description);
 
     // Subsequent bodies are answers/updates
@@ -221,7 +220,6 @@ function handleUpdate(args: string[]) {
     }
 
     if (body) {
-        review.body = body;
         review.bodies.push({ text: body, created_at: now });
         updated = true;
     }
