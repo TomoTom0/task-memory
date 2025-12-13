@@ -2,6 +2,16 @@ import { loadTasks, saveTasks, getTaskById } from '../store';
 import type { Task } from '../types';
 
 export function finishCommand(args: string[]): void {
+    if (args.includes('--help') || args.includes('-h')) {
+        console.log(`
+Usage: tm finish <id...> [options]
+
+Options:
+  --body <body>    Add a closing comment
+`);
+        return;
+    }
+
     // If no args provided
     if (args.length === 0) {
         console.error('Error: Task ID is required. Usage: tm finish <id...> [--body <body>]');

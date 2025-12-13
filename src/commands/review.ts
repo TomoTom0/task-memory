@@ -3,6 +3,22 @@ import { loadTasks, saveTasks, getTaskById, getNextId } from '../store';
 import type { Review, ReviewStatus, Task } from '../types';
 
 export function reviewCommand(args: string[]) {
+    if (args.includes('--help') || args.includes('-h')) {
+        console.log(`
+Usage: tm review <command> [args]
+
+Commands:
+  new <title> --body <body>
+  list
+  get <id> [--history]
+  update <id> [--status <status> --body <body>]
+  return <id> [--status <status> --body <body>]
+  accept <id> [--new <summary>...]
+  reject <id>
+`);
+        return;
+    }
+
     const subcommand = args[0];
     const subArgs = args.slice(1);
 

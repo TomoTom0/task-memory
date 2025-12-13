@@ -6,6 +6,8 @@ import { finishCommand } from './commands/finish';
 import { updateCommand } from './commands/update';
 import { envCommand } from './commands/env';
 import { reviewCommand } from './commands/review';
+import { releaseCommand } from './commands/release';
+import { closeCommand } from './commands/close';
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -35,12 +37,18 @@ switch (command) {
     updateCommand(commandArgs);
     break;
   case 'env':
-    envCommand();
+    envCommand(commandArgs);
     break;
   case 'review':
   case 'rev':
   case 'tmr':
     reviewCommand(commandArgs);
+    break;
+  case 'release':
+    releaseCommand(commandArgs);
+    break;
+  case 'close':
+    closeCommand(commandArgs);
     break;
   case 'help':
   case '--help':
@@ -89,6 +97,12 @@ Commands:
   review (rev, tmr) <subcommand> [args]
     Manage reviews.
     Subcommands: new, list, get, update, return, accept, reject
+
+  release <id...> --version <v>
+    Set version for task(s).
+
+  close <id...> [--body <text>]
+    Close task(s). Alias for update --status closed.
 
 Examples:
   tm new "Refactor auth" --status wip --body "Starting now" --priority high

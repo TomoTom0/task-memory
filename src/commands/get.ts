@@ -1,8 +1,18 @@
 import { loadTasks, getTaskById } from '../store';
 
 export function getCommand(args: string[]): void {
+    if (args.includes('--help') || args.includes('-h')) {
+        console.log(`
+Usage: tm get <id...> [options]
+
+Options:
+  --all, -a, --history     Show full history of bodies
+`);
+        return;
+    }
+
     // Parse options
-    const showAllHistory = args.includes('--all') || args.includes('-a') || args.includes('--history') || args.includes('-h');
+    const showAllHistory = args.includes('--all') || args.includes('-a') || args.includes('--history');
     const ids = args.filter(arg => !arg.startsWith('-'));
 
     if (ids.length === 0) {
