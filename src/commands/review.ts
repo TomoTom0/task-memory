@@ -87,7 +87,7 @@ function handleNew(args: string[]) {
             i += 2;
         } else if (args[i].startsWith('--')) {
             console.error(`Error: Unknown option '${args[i]}'.`);
-            process.exit(1);
+            return;
         } else {
             i++;
         }
@@ -95,7 +95,7 @@ function handleNew(args: string[]) {
 
     if (!title) {
         console.error('Error: Title is required');
-        process.exit(1);
+        return;
     }
 
     const reviews = loadReviews();
@@ -211,7 +211,7 @@ function handleUpdate(args: string[]) {
             i += 2;
         } else if (args[i].startsWith('--')) {
             console.error(`Error: Unknown option '${args[i]}'.`);
-            process.exit(1);
+            return;
         } else {
             i++;
         }
@@ -315,7 +315,7 @@ function handleAccept(args: string[]) {
             }
         } catch (error) {
             console.error(`Error parsing task args: ${error instanceof Error ? error.message : String(error)}`);
-            process.exit(1);
+            return;
         }
     }
 

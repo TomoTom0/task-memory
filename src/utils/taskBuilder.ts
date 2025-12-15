@@ -41,45 +41,50 @@ export function parseTaskArgs(args: string[]): TaskBuildOptions {
                     break;
                 case '--goal':
                 case '-g':
-                    const g = args[++i];
-                    if (g) {
+                    const g = args[i + 1];
+                    if (g && !g.startsWith('-')) {
                         goal = g;
+                        i++;
                     } else {
                         throw new Error('--goal requires a value.');
                     }
                     break;
                 case '--priority':
                 case '-p':
-                    const p = args[++i];
-                    if (p) {
+                    const p = args[i + 1];
+                    if (p && !p.startsWith('-')) {
                         priority = p;
+                        i++;
                     } else {
                         throw new Error('--priority requires a value.');
                     }
                     break;
                 case '--body':
                 case '-b':
-                    const b = args[++i];
-                    if (b) {
+                    const b = args[i + 1];
+                    if (b && !b.startsWith('-')) {
                         bodies.push(b);
+                        i++;
                     } else {
                         throw new Error('--body requires a value.');
                     }
                     break;
                 case '--add-file':
                 case '-a':
-                    const af = args[++i];
-                    if (af) {
+                    const af = args[i + 1];
+                    if (af && !af.startsWith('-')) {
                         addFiles.push(af);
+                        i++;
                     } else {
                         throw new Error('--add-file requires a path.');
                     }
                     break;
                 case '--read-file':
                 case '-r':
-                    const rf = args[++i];
-                    if (rf) {
+                    const rf = args[i + 1];
+                    if (rf && !rf.startsWith('-')) {
                         readFiles.push(rf);
+                        i++;
                     } else {
                         throw new Error('--read-file requires a path.');
                     }
