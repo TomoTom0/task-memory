@@ -1,5 +1,6 @@
 import { loadReviews, saveReviews, getNextReviewId, getReviewById } from '../reviewStore';
 import { loadTasks, saveTasks, getTaskById, getNextId } from '../store';
+import { parseTaskArgs, buildTask } from '../utils/taskBuilder';
 import type { Review, ReviewStatus, Task } from '../types';
 
 export function reviewCommand(args: string[]) {
@@ -84,6 +85,9 @@ function handleNew(args: string[]) {
         if (args[i] === '--body') {
             body = args[i + 1] || '';
             i += 2;
+        } else if (args[i].startsWith('--')) {
+            console.error(`Error: Unknown option '${args[i]}'.`);
+            return;
         } else {
             i++;
         }
@@ -91,7 +95,7 @@ function handleNew(args: string[]) {
 
     if (!title) {
         console.error('Error: Title is required');
-        process.exit(1);
+        return;
     }
 
     const reviews = loadReviews();
@@ -101,7 +105,6 @@ function handleNew(args: string[]) {
     const newReview: Review = {
         id: newId,
         title,
-        body,
         bodies: [{ text: body, created_at: now }],
         status: 'todo',
         created_at: now,
@@ -157,7 +160,7 @@ function handleGet(args: string[]) {
     console.log('---');
     console.log('Description:');
     // The first body is the description
-    const description = review.bodies[0]?.text || review.body;
+    const description = review.bodies[0]?.text || '';
     console.log(description);
 
     // Subsequent bodies are answers/updates
@@ -206,6 +209,9 @@ function handleUpdate(args: string[]) {
         } else if (args[i] === '--body') {
             body = args[i + 1];
             i += 2;
+        } else if (args[i].startsWith('--')) {
+            console.error(`Error: Unknown option '${args[i]}'.`);
+            return;
         } else {
             i++;
         }
@@ -220,7 +226,6 @@ function handleUpdate(args: string[]) {
     }
 
     if (body) {
-        review.body = body;
         review.bodies.push({ text: body, created_at: now });
         updated = true;
     }
@@ -298,56 +303,19 @@ function handleAccept(args: string[]) {
     const now = new Date().toISOString();
 
     for (const taskArgs of newTasksArgs) {
-        // We need to parse taskArgs similar to newCommand.
-        // Reuse logic or duplicate? 
-        // Let's duplicate simple parsing for now to avoid circular deps or complex refactor.
-        // tm new <summary> [options]
+        try {
+            const options = parseTaskArgs(taskArgs);
 
-        let summary = '';
-        let taskBody = '';
-        let priority = undefined;
-        let taskStatus: any = 'todo';
-
-        // Simple parser for taskArgs
-        let j = 0;
-        const summaryParts = [];
-        while (j < taskArgs.length) {
-            if (taskArgs[j].startsWith('--')) break;
-            summaryParts.push(taskArgs[j]);
-            j++;
-        }
-        summary = summaryParts.join(' ');
-
-        while (j < taskArgs.length) {
-            if (taskArgs[j] === '--body') {
-                taskBody = taskArgs[j + 1];
-                j += 2;
-            } else if (taskArgs[j] === '--priority') {
-                priority = taskArgs[j + 1];
-                j += 2;
-            } else if (taskArgs[j] === '--status') {
-                taskStatus = taskArgs[j + 1];
-                j += 2;
-            } else {
-                j++;
+            if (options.summary) {
+                const newTaskId = getNextId(tasks);
+                const newTask = buildTask(newTaskId, options);
+                tasks.push(newTask);
+                createdTaskIds.push(newTaskId);
+                console.log(`Created task ${newTaskId} from review`);
             }
-        }
-
-        if (summary) {
-            const newTaskId = getNextId(tasks);
-            const newTask: Task = {
-                id: newTaskId,
-                summary,
-                status: taskStatus as any,
-                priority: priority,
-                bodies: taskBody ? [{ text: taskBody, created_at: now }] : [],
-                files: { read: [], edit: [] },
-                created_at: now,
-                updated_at: now,
-            };
-            tasks.push(newTask);
-            createdTaskIds.push(newTaskId);
-            console.log(`Created task ${newTaskId} from review`);
+        } catch (error) {
+            console.error(`Error parsing task args: ${error instanceof Error ? error.message : String(error)}`);
+            return;
         }
     }
 

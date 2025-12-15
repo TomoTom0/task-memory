@@ -136,8 +136,8 @@ Options:
                     }
                     break;
                 default:
-                    console.error(`Warning: Unknown option '${arg}'.`);
-                // If unknown option, we don't consume next arg, but we still mark lastActionWasOption = true
+                    console.error(`Error: Unknown option '${arg}'.`);
+                    return;
             }
         } else {
             // ID handling
