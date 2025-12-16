@@ -49,7 +49,8 @@ Options:
                     console.error('Error: --body requires a text argument.');
                 }
             } else {
-                console.error(`Warning: Unknown option '${arg}'.`);
+                console.error(`Error: Unknown option '${arg}'.`);
+                return;
             }
         } else {
             // It's an ID

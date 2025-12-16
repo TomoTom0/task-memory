@@ -3,6 +3,9 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "build:tm": "bun build src/index.ts --outfile=dist/tm --compile"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },

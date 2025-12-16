@@ -32,7 +32,6 @@ export type ReviewStatus = 'todo' | 'wip' | 'checking' | 'closed' | 'done' | 'pe
 export interface Review {
     id: string;
     title: string;
-    body: string; // Current body
     bodies: TaskBody[]; // History of bodies
     status: ReviewStatus;
     created_at: string;

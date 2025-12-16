@@ -92,10 +92,12 @@ Options:
                 break;
             default:
                 if (arg.startsWith('--')) {
-                    console.warn(`Warning: Unknown option '${arg}'.`);
+                    console.error(`Error: Unknown option '${arg}'.`);
+                    return;
                 } else if (!arg.match(/^\d+$/)) {
                     // list command does not take positional arguments (except numeric ones for head/tail)
-                    console.warn(`Warning: Unknown argument '${arg}'.`);
+                    console.error(`Error: Unknown argument '${arg}'.`);
+                    return;
                 }
                 break;
         }
