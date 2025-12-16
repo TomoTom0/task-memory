@@ -32,11 +32,16 @@ export function parseTaskArgs(args: string[]): TaskBuildOptions {
             switch (arg) {
                 case '--status':
                 case '-s':
-                    const s = args[++i];
-                    if (s && ['todo', 'wip', 'done', 'pending', 'long', 'closed'].includes(s)) {
-                        status = s as TaskStatus;
+                    const s = args[i + 1];
+                    if (s && !s.startsWith('-')) {
+                        if (['todo', 'wip', 'done', 'pending', 'long', 'closed'].includes(s)) {
+                            status = s as TaskStatus;
+                            i++;
+                        } else {
+                            throw new Error(`Invalid status '${s}'. Allowed: todo, wip, done, pending, long, closed.`);
+                        }
                     } else {
-                        throw new Error(`Invalid status '${s}'. Allowed: todo, wip, done, pending, long, closed.`);
+                        throw new Error('--status requires a value.');
                     }
                     break;
                 case '--goal':

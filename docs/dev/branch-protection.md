@@ -50,11 +50,6 @@ main
 - [x] **Restrict who can push to matching branches**
   - 直接pushを完全に禁止（空のリストのまま）
 
-#### 追加の推奨設定
-
-- [x] **Include administrators**
-  - 管理者にもこれらのルールを適用
-
 - [x] **Allow force pushes: Specify who can force push**
   - 無効（デフォルト）
 
@@ -87,11 +82,6 @@ dev
 
 - [x] **Restrict who can push to matching branches**
   - 直接pushを完全に禁止（空のリストのまま）
-
-#### 追加の推奨設定
-
-- [x] **Include administrators**
-  - 管理者にもこれらのルールを適用
 
 - [x] **Allow force pushes: Specify who can force push**
   - 無効（デフォルト）

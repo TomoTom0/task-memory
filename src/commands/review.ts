@@ -89,7 +89,8 @@ function handleNew(args: string[]) {
             console.error(`Error: Unknown option '${args[i]}'.`);
             return;
         } else {
-            i++;
+            console.error(`Error: Unknown argument '${args[i]}'.`);
+            return;
         }
     }
 
@@ -213,7 +214,8 @@ function handleUpdate(args: string[]) {
             console.error(`Error: Unknown option '${args[i]}'.`);
             return;
         } else {
-            i++;
+            console.error(`Error: Unknown argument '${args[i]}'.`);
+            return;
         }
     }
 
