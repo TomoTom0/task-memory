@@ -2,7 +2,7 @@ import { runGitCommand, isSyncInitialized, getSyncDir } from '../syncStore';
 
 export function gitCommand(args: string[]): void {
     if (!isSyncInitialized()) {
-        console.error('Sync repository not initialized. Run "tm sync init" first.');
+        console.error('Sync repository not initialized. Run "tm sync add" first.');
         process.exit(1);
     }
 

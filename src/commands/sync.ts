@@ -28,10 +28,8 @@ function parseArgs(args: string[]): { subcommand: string; options: Record<string
                 options[key] = true;
                 i++;
             }
-        } else if (arg) {
-            positional.push(arg);
-            i++;
         } else {
+            positional.push(arg);
             i++;
         }
     }

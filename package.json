@@ -18,10 +18,8 @@
     "llm",
     "claude"
   ],
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
   "bin": {
-    "tm": "dist/index.js"
+    "tm": "dist/tm"
   },
   "files": [
     "dist"

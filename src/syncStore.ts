@@ -1,6 +1,6 @@
 import { join } from 'path';
 import { homedir } from 'os';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, readdirSync } from 'fs';
 import { spawnSync } from 'child_process';
 import type { TaskStore, SyncConfig } from './types';
 
@@ -79,7 +79,7 @@ export function getProjectFilePath(syncId: string): string {
 
 export function pushToSync(syncId: string, store: TaskStore): boolean {
     if (!isSyncInitialized()) {
-        console.error('Sync repository not initialized. Run "tm sync init" first.');
+        console.error('Sync repository not initialized. Run "tm sync add" first.');
         return false;
     }
 
@@ -108,7 +108,7 @@ export function tryAutoSync(syncConfig: SyncConfig | undefined, store: TaskStore
 
 export function pullFromSync(syncId: string): TaskStore | null {
     if (!isSyncInitialized()) {
-        console.error('Sync repository not initialized. Run "tm sync init" first.');
+        console.error('Sync repository not initialized. Run "tm sync add" first.');
         return null;
     }
 
@@ -133,7 +133,6 @@ export function listSyncedProjects(): string[] {
         return [];
     }
 
-    const { readdirSync } = require('fs');
     const files = readdirSync(PROJECTS_DIR) as string[];
     return files
         .filter((f: string) => f.endsWith('.json'))
@@ -142,7 +141,7 @@ export function listSyncedProjects(): string[] {
 
 export function runGitCommand(args: string[]): number {
     if (!isSyncInitialized()) {
-        console.error('Sync repository not initialized. Run "tm sync init" first.');
+        console.error('Sync repository not initialized. Run "tm sync add" first.');
         return 1;
     }
 
