@@ -1,7 +1,7 @@
 import { join, resolve, dirname } from 'path';
 import { homedir } from 'os';
 import { existsSync, readFileSync, writeFileSync, statSync } from 'fs';
-import type { Task, TaskStore } from './types';
+import type { Task, TaskStore, SyncConfig } from './types';
 
 export function findGitDir(startDir: string): string | null {
     let currentDir = startDir;
@@ -46,41 +46,69 @@ export function getDbPath(): string {
 
 const DB_PATH = getDbPath();
 
-export function loadTasks(): Task[] {
+// 内部キャッシュ（sync設定を保持するため）
+let cachedStore: TaskStore | null = null;
+
+// 保存後のコールバック（自動同期用）
+let afterSaveCallback: ((store: TaskStore) => void) | null = null;
+
+export function setAfterSaveCallback(callback: (store: TaskStore) => void): void {
+    afterSaveCallback = callback;
+}
+
+export function loadStore(): TaskStore {
     if (!existsSync(DB_PATH)) {
-        return [];
+        return { tasks: [] };
     }
     try {
         const data = readFileSync(DB_PATH, 'utf-8');
-        const store: TaskStore = JSON.parse(data);
-        // Handle case where file exists but might be empty or different structure initially
-        // For now assume it matches TaskStore or is array of tasks if we change schema later
-        // The design says "Task Object" but implies a collection. 
-        // Let's assume the file contains an object with a "tasks" property or just an array.
-        // The design example shows a single Task Object. 
-        // But we need to store multiple tasks. 
-        // "Data is persisted in a local JSON file... Task Object...".
-        // Usually a list of tasks. Let's stick to TaskStore { tasks: [] } or just Task[]
-        // Design doesn't explicitly define the root. Let's use { tasks: Task[] } for extensibility
-        // or just Task[] for simplicity as per "Output: JSON array" in `tm get --all`.
-        // Let's use an array of tasks as the root for simplicity based on `tm list` needing to iterate.
+        const parsed = JSON.parse(data);
 
-        if (Array.isArray(store)) {
-            return store as Task[];
+        // 旧形式（配列）との互換性を維持
+        if (Array.isArray(parsed)) {
+            return { tasks: parsed as Task[] };
         }
-        return (store as any).tasks || [];
+        return parsed as TaskStore;
     } catch (e) {
-        console.error(`Error loading tasks from ${DB_PATH}:`, e);
-        return [];
+        console.error(`Error loading store from ${DB_PATH}:`, e);
+        return { tasks: [] };
     }
 }
 
-export function saveTasks(tasks: Task[]): void {
+export function saveStore(store: TaskStore): void {
     try {
-        writeFileSync(DB_PATH, JSON.stringify(tasks, null, 2), 'utf-8');
+        writeFileSync(DB_PATH, JSON.stringify(store, null, 2), 'utf-8');
+        cachedStore = store;
+        if (afterSaveCallback) {
+            afterSaveCallback(store);
+        }
     } catch (e) {
-        console.error(`Error saving tasks to ${DB_PATH}:`, e);
+        console.error(`Error saving store to ${DB_PATH}:`, e);
     }
+}
+
+export function loadTasks(): Task[] {
+    const store = loadStore();
+    cachedStore = store;
+    return store.tasks;
+}
+
+export function saveTasks(tasks: Task[]): void {
+    // sync設定を保持しつつtasksを更新
+    const store = cachedStore || loadStore();
+    store.tasks = tasks;
+    saveStore(store);
+}
+
+export function loadSyncConfig(): SyncConfig | undefined {
+    const store = cachedStore || loadStore();
+    return store.sync;
+}
+
+export function saveSyncConfig(sync: SyncConfig): void {
+    const store = cachedStore || loadStore();
+    store.sync = sync;
+    saveStore(store);
 }
 
 export function getTaskById(tasks: Task[], idOrIndex: string | number): Task | undefined {

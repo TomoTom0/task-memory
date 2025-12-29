@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import { newCommand } from './commands/new';
 import { listCommand } from './commands/list';
 import { getCommand } from './commands/get';
@@ -8,6 +8,15 @@ import { envCommand } from './commands/env';
 import { reviewCommand } from './commands/review';
 import { releaseCommand } from './commands/release';
 import { closeCommand } from './commands/close';
+import { syncCommand } from './commands/sync';
+import { gitCommand } from './commands/git';
+import { setAfterSaveCallback } from './store';
+import { tryAutoSync } from './syncStore';
+
+// 自動同期コールバックを設定
+setAfterSaveCallback((store) => {
+    tryAutoSync(store.sync, store);
+});
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -49,6 +58,12 @@ switch (command) {
     break;
   case 'close':
     closeCommand(commandArgs);
+    break;
+  case 'sync':
+    syncCommand(commandArgs);
+    break;
+  case 'git':
+    gitCommand(commandArgs);
     break;
   case 'help':
   case '--help':
@@ -111,6 +126,13 @@ Commands:
 
   close <id...> [--body <text>]
     Close task(s). Alias for update --status closed.
+
+  sync <subcommand> [options]
+    Sync tasks to ~/.local/task-memory/ repository.
+    Subcommands: add, remove, push, pull, set, status, list
+
+  git <git-command> [args]
+    Run git commands in ~/.local/task-memory/ repository.
 
 Examples:
   tm new "Refactor auth" --status wip --body "Starting now" --priority high
