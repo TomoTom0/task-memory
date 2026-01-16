@@ -34,6 +34,49 @@ tm new "認証機能のリファクタリング"
 # 出力: TASK-1 認証機能のリファクタリング
 ```
 
+#### 進行順序の設定
+
+タスクに進行順序（order）を設定することで、作業の優先順位を階層的に管理できます。
+
+**基本的な使い方:**
+```bash
+# 順番に並べる
+tm new "Task 1" --order 1
+tm new "Task 2" --order 2
+tm new "Task 3" --order 3
+```
+
+**階層的な順序:**
+```bash
+# 親タスク
+tm new "Database Migration" --order 1
+
+# 子タスク（1の下位タスク）
+tm new "Backup current DB" --order 1-1
+tm new "Run migration script" --order 1-2
+tm new "Verify data integrity" --order 1-3
+
+# 孫タスク（1-2の下位タスク）
+tm new "Test migration locally" --order 1-2-1
+tm new "Deploy to staging" --order 1-2-2
+
+# 別の親タスク
+tm new "Documentation" --order 2
+```
+
+**小数での挿入:**
+```bash
+# すでに 1, 2 がある場合、間に挿入
+tm new "Insert between 1 and 2" --order 1.5
+# 保存時に自動的に正規化されて 1, 2, 3 になります
+```
+
+**order の特徴:**
+- `todo`, `wip` ステータスのみ order を保持
+- `done`, `closed`, `pending`, `long` に変更すると order は自動的に解除
+- 欠番は自動的に詰められる（1, 3, 5 → 1, 2, 3）
+- 孫タスクがある場合、その親番号は確保される
+
 ### 2. タスク一覧の表示 (`tm list`)
 
 現在進行中（`todo`, `wip`）のタスクを表示します。
@@ -105,6 +148,23 @@ tm list --released --head 3
 tm list --priority high --status pending
 ```
 
+#### ソート順の指定
+
+デフォルトでは進行順序（order）でソートされます。
+
+```bash
+# 進行順序でソート（デフォルト）
+tm list --sort order
+# order が未設定のタスクは後ろに表示されます
+# 1 < 1-1 < 1-2 < 2 < 2-1 の順
+
+# タスクID順
+tm list --sort id
+
+# 作成日時順
+tm list --sort created
+```
+
 ### 3. タスクの更新 (`tm update`)
 
 タスクの状態を更新したり、作業ログ（body）を追記したりします。
@@ -126,6 +186,16 @@ tm update 1 --body "JWTの実装を開始"
 
 ```bash
 tm update 1 --add-file src/auth.ts
+```
+
+**進行順序の更新:**
+
+```bash
+# order を設定
+tm update 1 --order 1-2
+
+# order を解除
+tm update 1 --order null
 ```
 
 **複数タスクの同時更新（コンテキストスイッチ）:**
