@@ -2,6 +2,7 @@ import { join, resolve, dirname } from 'path';
 import { homedir } from 'os';
 import { existsSync, readFileSync, writeFileSync, statSync } from 'fs';
 import type { Task, TaskStore, SyncConfig } from './types';
+import { normalizeOrders } from './utils/orderUtils';
 
 export function findGitDir(startDir: string): string | null {
     let currentDir = startDir;
@@ -93,10 +94,48 @@ export function loadTasks(): Task[] {
     return store.tasks;
 }
 
+/**
+ * タスクの order を正規化する
+ * todo, wip のタスクのみを対象とし、それ以外は null にする
+ */
+function normalizeTaskOrders(tasks: Task[]): Task[] {
+    // todo, wip のタスクのインデックスと order を収集
+    const activeIndices: number[] = [];
+    const activeOrders: (string | null)[] = [];
+
+    tasks.forEach((task, index) => {
+        if (task.status === 'todo' || task.status === 'wip') {
+            activeIndices.push(index);
+            activeOrders.push(task.order ?? null);
+        }
+    });
+
+    // 正規化
+    const normalizedOrders = normalizeOrders(activeOrders);
+
+    // 結果を反映
+    const result = tasks.map((task, index) => {
+        if (task.status === 'todo' || task.status === 'wip') {
+            const activeIndex = activeIndices.indexOf(index);
+            if (activeIndex !== -1) {
+                return { ...task, order: normalizedOrders[activeIndex] };
+            }
+        }
+        // todo, wip 以外は order を null に
+        if (task.order !== null && task.order !== undefined) {
+            return { ...task, order: null };
+        }
+        return task;
+    });
+
+    return result;
+}
+
 export function saveTasks(tasks: Task[]): void {
     // sync設定を保持しつつtasksを更新
     const store = cachedStore || loadStore();
-    store.tasks = tasks;
+    // order を正規化
+    store.tasks = normalizeTaskOrders(tasks);
     saveStore(store);
 }
 

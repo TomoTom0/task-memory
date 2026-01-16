@@ -11,6 +11,7 @@ Options:
   --priority, -p <value>   Update priority
   --version, -v <value>    Update version
   --goal, -g <text>        Update completion goal
+  --order, -o <value>      Update progress order (use 'null' to clear)
   --body, -b <text>        Append body text
   --add-file, -a <path>    Add editable file
   --rm-file, -d <path>     Remove editable file
@@ -54,7 +55,13 @@ Options:
                 case '-s':
                     const status = args[++i];
                     if (status && ['todo', 'wip', 'done', 'pending', 'long', 'closed'].includes(status)) {
-                        applyUpdate(t => t.status = status as any);
+                        applyUpdate(t => {
+                            t.status = status as any;
+                            // todo, wip 以外に変更したら order を null にする
+                            if (status !== 'todo' && status !== 'wip') {
+                                t.order = null;
+                            }
+                        });
                     } else {
                         console.error(`Error: Invalid status '${status}'. Allowed: todo, wip, done, pending, long, closed.`);
                     }
@@ -84,6 +91,22 @@ Options:
                         applyUpdate(t => t.goal = goal);
                     } else {
                         console.error('Error: --goal requires a value.');
+                    }
+                    break;
+                case '--order':
+                case '-o':
+                    const order = args[++i];
+                    if (order) {
+                        applyUpdate(t => {
+                            // todo, wip のみ order を設定可能
+                            if (t.status === 'todo' || t.status === 'wip') {
+                                t.order = order === 'null' ? null : order;
+                            } else {
+                                console.error(`Error: Cannot set order for task with status '${t.status}'. Only todo/wip allowed.`);
+                            }
+                        });
+                    } else {
+                        console.error('Error: --order requires a value.');
                     }
                     break;
                 case '--body':

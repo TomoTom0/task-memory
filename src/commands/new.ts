@@ -10,6 +10,7 @@ Options:
   --status, -s <status>    Set initial status (todo, wip, done, pending, long, closed)
   --priority, -p <value>   Set priority
   --goal, -g <text>        Set completion goal
+  --order, -o <value>      Set progress order (e.g., 1, 1-1, 2-3)
   --body, -b <text>        Add initial body text
   --add-file, -a <path>    Add editable file
   --read-file, -r <path>   Add read-only file
