@@ -118,14 +118,18 @@ function normalizeTaskOrders(tasks: Task[]): Task[] {
         if (task.status === 'todo' || task.status === 'wip') {
             const activeIndex = activeIndices.indexOf(index);
             if (activeIndex !== -1) {
-                return { ...task, order: normalizedOrders[activeIndex] };
+                const newOrder = normalizedOrders[activeIndex];
+                if (task.order !== newOrder) {
+                    return { ...task, order: newOrder };
+                }
             }
+            return task;
+        } else {
+            if (task.order != null) {
+                return { ...task, order: null };
+            }
+            return task;
         }
-        // todo, wip 以外は order を null に
-        if (task.order !== null && task.order !== undefined) {
-            return { ...task, order: null };
-        }
-        return task;
     });
 
     return result;

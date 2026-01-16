@@ -160,16 +160,21 @@ export function normalizeOrders(
 
             // 親パスの正規化後のキーを計算
             const mapping = renumberMap.get(originalParentKey);
-            if (mapping) {
-                const newNum = mapping.get(item.parts[i]);
-                if (newNum !== undefined) {
-                    newParts.push(newNum);
-                } else {
-                    newParts.push(item.parts[i]);
-                }
-            } else {
-                newParts.push(item.parts[i]);
+            if (!mapping) {
+                // This case should not be reached if all parent paths are collected.
+                throw new Error(
+                    `Internal error: no renumbering map for parent ${originalParentKey}`
+                );
             }
+
+            const newNum = mapping.get(item.parts[i]);
+            if (newNum === undefined) {
+                // This case should also not be reached.
+                throw new Error(
+                    `Internal error: no new number for ${item.parts[i]} in parent ${originalParentKey}`
+                );
+            }
+            newParts.push(newNum);
         }
 
         normalizedMap.set(item.index, formatOrder(newParts));
