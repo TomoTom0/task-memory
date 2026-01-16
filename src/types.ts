@@ -16,6 +16,7 @@ export interface Task {
     priority?: string;
     version?: string;
     goal?: string;
+    order?: string | null;
     summary: string;
     bodies: TaskBody[];
     files: TaskFiles;

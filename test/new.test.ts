@@ -51,4 +51,32 @@ describe('tm new argument parsing', () => {
         expect(tasks[0].summary).toBe('Task With Goal');
         expect(tasks[0].goal).toBe('Complete this');
     });
+
+    it('should create task with order', () => {
+        newCommand(['Task With Order', '--order', '1-2']);
+        const tasks = loadTasks();
+        expect(tasks.length).toBe(1);
+        expect(tasks[0].summary).toBe('Task With Order');
+        // 単一タスクで 1-2 は 1-1 に正規化される（1の子で唯一なので1番目）
+        expect(tasks[0].order).toBe('1-1');
+    });
+
+    it('should create task with decimal order (normalized)', () => {
+        newCommand(['Task 1', '--order', '1']);
+        newCommand(['Task 2', '--order', '3']);
+        newCommand(['Task 3', '--order', '5']);
+        const tasks = loadTasks();
+        expect(tasks.length).toBe(3);
+        // 正規化後: 1, 3, 5 -> 1, 2, 3
+        expect(tasks.find(t => t.summary === 'Task 1')?.order).toBe('1');
+        expect(tasks.find(t => t.summary === 'Task 2')?.order).toBe('2');
+        expect(tasks.find(t => t.summary === 'Task 3')?.order).toBe('3');
+    });
+
+    it('should set order to null for non-todo/wip status', () => {
+        newCommand(['Done Task', '--status', 'done', '--order', '1']);
+        const tasks = loadTasks();
+        expect(tasks.length).toBe(1);
+        expect(tasks[0].order).toBeNull();
+    });
 });
