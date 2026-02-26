@@ -229,4 +229,17 @@ tm finish 1
 
 ## データの保存場所
 
-デフォルトでは `~/.task-memory.json` にデータが保存されます。
+以下の優先順位でデータの保存先が決定されます。
+
+| 優先度 | 条件 | 保存先 |
+|--------|------|--------|
+| 1 | 環境変数 `TASK_MEMORY_PATH` が設定されている | 環境変数で指定したパス |
+| 2 | `.git` ディレクトリが存在し、かつ `.git/task-memory.json` が存在する | `.git/task-memory.json` |
+| 3 | `.git`（ファイル・ディレクトリ問わず）と同じ階層に `task-memory.json` が存在する | `<プロジェクトルート>/task-memory.json` |
+| 4 | `.git` と同じ階層に `.task-memory.json` が存在する | `<プロジェクトルート>/.task-memory.json` |
+| 5 | `.git` が存在するが保存ファイルがない（新規） | `.git/task-memory.json`（`.git` がディレクトリの場合）または `<プロジェクトルート>/task-memory.json` |
+| 6 | `.git` が存在しない | `~/.task-memory.json` |
+
+### git worktree での利用
+
+`git worktree` 使用時は `.git` がファイルになりますが、そのファイルと同じ階層の `task-memory.json` または `.task-memory.json` が自動的に参照されます。これにより、worktree ごとに独立したタスク管理が可能です。

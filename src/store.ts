@@ -4,20 +4,15 @@ import { existsSync, readFileSync, writeFileSync, statSync } from 'fs';
 import type { Task, TaskStore, SyncConfig } from './types';
 import { normalizeOrders } from './utils/orderUtils';
 
-export function findGitDir(startDir: string): string | null {
+// .git（ファイル・ディレクトリ問わず）のパスを返す
+export function findGitPath(startDir: string): string | null {
     let currentDir = startDir;
     const home = homedir();
 
     while (true) {
-        const gitDir = join(currentDir, '.git');
-        if (existsSync(gitDir)) {
-            try {
-                if (statSync(gitDir).isDirectory()) {
-                    return gitDir;
-                }
-            } catch (e) {
-                // ignore
-            }
+        const gitPath = join(currentDir, '.git');
+        if (existsSync(gitPath)) {
+            return gitPath;
         }
 
         if (currentDir === home) {
@@ -37,9 +32,36 @@ export function getDbPath(): string {
         return resolve(process.cwd(), process.env.TASK_MEMORY_PATH);
     }
 
-    const gitDir = findGitDir(process.cwd());
-    if (gitDir) {
-        return join(gitDir, 'task-memory.json');
+    const gitPath = findGitPath(process.cwd());
+    if (gitPath) {
+        // 優先度1: .git/task-memory.json（.git がディレクトリの場合）
+        try {
+            if (statSync(gitPath).isDirectory()) {
+                const gitTaskMemory = join(gitPath, 'task-memory.json');
+                if (existsSync(gitTaskMemory)) {
+                    return gitTaskMemory;
+                }
+            }
+        } catch { }
+
+        // 優先度2・3: .git と同じ階層の task-memory.json / .task-memory.json
+        const projectDir = dirname(gitPath);
+        const taskMemoryPath = join(projectDir, 'task-memory.json');
+        if (existsSync(taskMemoryPath)) {
+            return taskMemoryPath;
+        }
+        const hiddenPath = join(projectDir, '.task-memory.json');
+        if (existsSync(hiddenPath)) {
+            return hiddenPath;
+        }
+
+        // どちらも存在しない場合のデフォルト
+        try {
+            if (statSync(gitPath).isDirectory()) {
+                return join(gitPath, 'task-memory.json');
+            }
+        } catch { }
+        return taskMemoryPath;
     }
 
     return join(homedir(), '.task-memory.json');
