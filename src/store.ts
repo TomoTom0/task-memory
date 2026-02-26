@@ -4,20 +4,15 @@ import { existsSync, readFileSync, writeFileSync, statSync } from 'fs';
 import type { Task, TaskStore, SyncConfig } from './types';
 import { normalizeOrders } from './utils/orderUtils';
 
-export function findGitDir(startDir: string): string | null {
+// .git（ファイル・ディレクトリ問わず）のパスを返す
+export function findGitPath(startDir: string): string | null {
     let currentDir = startDir;
     const home = homedir();
 
     while (true) {
-        const gitDir = join(currentDir, '.git');
-        if (existsSync(gitDir)) {
-            try {
-                if (statSync(gitDir).isDirectory()) {
-                    return gitDir;
-                }
-            } catch (e) {
-                // ignore
-            }
+        const gitPath = join(currentDir, '.git');
+        if (existsSync(gitPath)) {
+            return gitPath;
         }
 
         if (currentDir === home) {
@@ -37,9 +32,37 @@ export function getDbPath(): string {
         return resolve(process.cwd(), process.env.TASK_MEMORY_PATH);
     }
 
-    const gitDir = findGitDir(process.cwd());
-    if (gitDir) {
-        return join(gitDir, 'task-memory.json');
+    const gitPath = findGitPath(process.cwd());
+    if (gitPath) {
+        let isGitDir = false;
+        try {
+            isGitDir = statSync(gitPath).isDirectory();
+        } catch { }
+
+        // 優先度2: .git/task-memory.json（.git がディレクトリの場合）
+        if (isGitDir) {
+            const gitTaskMemory = join(gitPath, 'task-memory.json');
+            if (existsSync(gitTaskMemory)) {
+                return gitTaskMemory;
+            }
+        }
+
+        // 優先度3・4: .git と同じ階層の task-memory.json / .task-memory.json
+        const projectDir = dirname(gitPath);
+        const taskMemoryPath = join(projectDir, 'task-memory.json');
+        if (existsSync(taskMemoryPath)) {
+            return taskMemoryPath;
+        }
+        const hiddenPath = join(projectDir, '.task-memory.json');
+        if (existsSync(hiddenPath)) {
+            return hiddenPath;
+        }
+
+        // 優先度5: どの保存ファイルも存在しない場合のデフォルトパス
+        if (isGitDir) {
+            return join(gitPath, 'task-memory.json');
+        }
+        return taskMemoryPath;
     }
 
     return join(homedir(), '.task-memory.json');
