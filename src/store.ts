@@ -34,17 +34,20 @@ export function getDbPath(): string {
 
     const gitPath = findGitPath(process.cwd());
     if (gitPath) {
-        // 優先度1: .git/task-memory.json（.git がディレクトリの場合）
+        let isGitDir = false;
         try {
-            if (statSync(gitPath).isDirectory()) {
-                const gitTaskMemory = join(gitPath, 'task-memory.json');
-                if (existsSync(gitTaskMemory)) {
-                    return gitTaskMemory;
-                }
-            }
+            isGitDir = statSync(gitPath).isDirectory();
         } catch { }
 
-        // 優先度2・3: .git と同じ階層の task-memory.json / .task-memory.json
+        // 優先度2: .git/task-memory.json（.git がディレクトリの場合）
+        if (isGitDir) {
+            const gitTaskMemory = join(gitPath, 'task-memory.json');
+            if (existsSync(gitTaskMemory)) {
+                return gitTaskMemory;
+            }
+        }
+
+        // 優先度3・4: .git と同じ階層の task-memory.json / .task-memory.json
         const projectDir = dirname(gitPath);
         const taskMemoryPath = join(projectDir, 'task-memory.json');
         if (existsSync(taskMemoryPath)) {
@@ -55,12 +58,10 @@ export function getDbPath(): string {
             return hiddenPath;
         }
 
-        // どちらも存在しない場合のデフォルト
-        try {
-            if (statSync(gitPath).isDirectory()) {
-                return join(gitPath, 'task-memory.json');
-            }
-        } catch { }
+        // 優先度5: どの保存ファイルも存在しない場合のデフォルトパス
+        if (isGitDir) {
+            return join(gitPath, 'task-memory.json');
+        }
         return taskMemoryPath;
     }
 
