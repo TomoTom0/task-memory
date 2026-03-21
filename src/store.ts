@@ -126,15 +126,19 @@ function normalizeTaskOrders(tasks: Task[]): Task[] {
     const activeIndices: number[] = [];
     const activeOrders: (string | null)[] = [];
 
+    const activeTiebreakers: number[] = [];
+
     tasks.forEach((task, index) => {
         if (task.status === 'todo' || task.status === 'wip') {
             activeIndices.push(index);
             activeOrders.push(task.order ?? null);
+            // updated_at が新しいタスクを競合時に優先させる
+            activeTiebreakers.push(new Date(task.updated_at || 0).getTime());
         }
     });
 
     // 正規化
-    const normalizedOrders = normalizeOrders(activeOrders);
+    const normalizedOrders = normalizeOrders(activeOrders, activeTiebreakers);
 
     // 結果を反映
     const result = tasks.map((task, index) => {

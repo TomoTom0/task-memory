@@ -2,31 +2,18 @@
 
 ## New Features
 
-（変更内容をここに記載）
+- **sync: age 暗号化サポート** (`TASK-6`): `tm sync add --encrypt` で age による暗号化を有効化できるようになりました。SSH 鍵互換の暗号化で、push 時に `.json.age` として保存し、pull 時に自動復号します。`--key <path>` で既存の鍵ファイルを指定することも可能です。
 
 ## Bug Fixes
 
-（変更内容をここに記載）
-
-## Changes
-
-（変更内容をここに記載）
-
-## Performance
-
-（変更内容をここに記載）
-
-## Refactoring
-
-（変更内容をここに記載）
-
-## Repository Management
-
-（変更内容をここに記載）
+- **order: 重複 order の連番振り直し** (`TASK-5`): 同じ order 値が複数のタスクに割り当てられた場合、重複を許容せず連番に振り直すように修正しました。
+- **order: 挿入セマンティクスの実装** (`TASK-5`): 既存の order と同じ値を新規タスクに設定した場合、新しいタスクが優先され、既存タスクが後ろにシフトされるようになりました（`updated_at` が新しい方が優先）。
 
 ## Internal Improvements
 
-（変更内容をここに記載）
+- **テスト基盤の改善** (`TASK-4`): テストがプロジェクト本体のタスクストアを上書きしてしまう問題を修正しました。`test/helpers/testProject.ts` を新設し、一時 git リポジトリを使ったサブプロセス方式に切り替えることで完全に分離しました。
+- **sync: マージロジックの改善** (`TASK-5`): `id + created_at` の複合キーで同一タスクを判定するようになりました。ID のみの衝突は新しい ID を割り当てて取り込みます。
+- **sync: age コマンド未インストール時のエラー改善** (`TASK-7`): `encryptData`・`decryptData`・`generateAgeKey` で `spawnSync` の `result.error` を確認するようにしました。`age`/`age-keygen` がインストールされていない場合に「コマンドが見つかりません」という明確なエラーメッセージを表示します。
 
 ## Known Issues
 
