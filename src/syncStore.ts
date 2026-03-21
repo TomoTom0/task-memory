@@ -77,16 +77,94 @@ export function getProjectFilePath(syncId: string): string {
     return join(PROJECTS_DIR, `${syncId}.json`);
 }
 
-export function pushToSync(syncId: string, store: TaskStore): boolean {
+export function getEncryptedProjectFilePath(syncId: string): string {
+    return join(PROJECTS_DIR, `${syncId}.json.age`);
+}
+
+/**
+ * age identity ファイルから公開鍵を取得する。
+ * identity ファイルのコメント行 "# public key: age1..." から抽出する。
+ */
+export function getPublicKeyFromIdentityFile(keyFile: string): string | null {
+    try {
+        const content = readFileSync(keyFile, 'utf-8');
+        const match = content.match(/^# public key: (.+)$/m);
+        return match ? match[1]!.trim() : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * データを age で暗号化する（ASCII armor 出力）。
+ * identity ファイルの公開鍵を recipient として使用する。
+ */
+export function encryptData(data: string, keyFile: string): string | null {
+    const pubkey = getPublicKeyFromIdentityFile(keyFile);
+    if (!pubkey) {
+        console.error(`Could not read public key from ${keyFile}`);
+        return null;
+    }
+
+    const result = spawnSync('age', ['-e', '-r', pubkey, '-a'], {
+        input: data,
+        encoding: 'utf-8',
+    });
+
+    if (result.status !== 0) {
+        console.error(`Encryption failed: ${result.stderr}`);
+        return null;
+    }
+
+    return result.stdout;
+}
+
+/**
+ * age で暗号化されたデータを復号する。
+ */
+export function decryptData(ciphertext: string, keyFile: string): string | null {
+    const result = spawnSync('age', ['-d', '-i', keyFile], {
+        input: ciphertext,
+        encoding: 'utf-8',
+    });
+
+    if (result.status !== 0) {
+        console.error(`Decryption failed: ${result.stderr}`);
+        return null;
+    }
+
+    return result.stdout;
+}
+
+/**
+ * age-keygen で新しい identity ファイルを生成する。
+ */
+export function generateAgeKey(outputPath: string): boolean {
+    const result = spawnSync('age-keygen', ['-o', outputPath], {
+        encoding: 'utf-8',
+    });
+    return result.status === 0;
+}
+
+export function pushToSync(syncId: string, store: TaskStore, encryptKeyFile?: string): boolean {
     if (!isSyncInitialized()) {
         console.error('Sync repository not initialized. Run "tm sync add" first.');
         return false;
     }
 
-    const projectFile = getProjectFilePath(syncId);
+    const projectFile = encryptKeyFile
+        ? getEncryptedProjectFilePath(syncId)
+        : getProjectFilePath(syncId);
 
     try {
-        writeFileSync(projectFile, JSON.stringify(store, null, 2), 'utf-8');
+        const jsonData = JSON.stringify(store, null, 2);
+        if (encryptKeyFile) {
+            const encrypted = encryptData(jsonData, encryptKeyFile);
+            if (!encrypted) return false;
+            writeFileSync(projectFile, encrypted, 'utf-8');
+        } else {
+            writeFileSync(projectFile, jsonData, 'utf-8');
+        }
         return true;
     } catch (e) {
         console.error(`Failed to push to sync: ${e}`);
@@ -103,25 +181,33 @@ export function tryAutoSync(syncConfig: SyncConfig | undefined, store: TaskStore
         return;
     }
 
-    pushToSync(syncConfig.id, store);
+    pushToSync(syncConfig.id, store, syncConfig.encryptKeyFile);
 }
 
-export function pullFromSync(syncId: string): TaskStore | null {
+export function pullFromSync(syncId: string, encryptKeyFile?: string): TaskStore | null {
     if (!isSyncInitialized()) {
         console.error('Sync repository not initialized. Run "tm sync add" first.');
         return null;
     }
 
-    const projectFile = getProjectFilePath(syncId);
-
-    if (!existsSync(projectFile)) {
-        console.error(`Project "${syncId}" not found in sync repository.`);
-        return null;
-    }
+    const ageFile = getEncryptedProjectFilePath(syncId);
+    const jsonFile = getProjectFilePath(syncId);
 
     try {
-        const data = readFileSync(projectFile, 'utf-8');
-        return JSON.parse(data) as TaskStore;
+        if (encryptKeyFile && existsSync(ageFile)) {
+            const ciphertext = readFileSync(ageFile, 'utf-8');
+            const decrypted = decryptData(ciphertext, encryptKeyFile);
+            if (!decrypted) return null;
+            return JSON.parse(decrypted) as TaskStore;
+        }
+
+        if (existsSync(jsonFile)) {
+            const data = readFileSync(jsonFile, 'utf-8');
+            return JSON.parse(data) as TaskStore;
+        }
+
+        console.error(`Project "${syncId}" not found in sync repository.`);
+        return null;
     } catch (e) {
         console.error(`Failed to pull from sync: ${e}`);
         return null;
@@ -149,20 +235,46 @@ export function runGitCommand(args: string[]): number {
     return result.status ?? 1;
 }
 
+export function normalizeRemoteUrl(url: string): string {
+    let s = url.trim();
+    // プロトコル除去: https://, http://, git://
+    s = s.replace(/^https?:\/\//, '');
+    s = s.replace(/^git:\/\//, '');
+    // user@ 除去 (例: git@github.com: → github.com:)
+    s = s.replace(/^[^@]+@/, '');
+    // SSH の : をスラッシュに変換 (例: github.com:user/repo → github.com/user/repo)
+    s = s.replace(':', '/');
+    // .git サフィックス除去
+    s = s.replace(/\.git$/, '');
+    // スラッシュをハイフンに変換
+    s = s.replace(/\//g, '-');
+    // 英数字・ハイフン・ドット以外を除去
+    s = s.replace(/[^a-zA-Z0-9._-]/g, '-');
+    // 先頭末尾のハイフン除去
+    s = s.replace(/^-+|-+$/g, '');
+    return s || 'unknown';
+}
+
 export function generateSyncId(): string {
-    // カレントディレクトリのgitリポジトリ名を使用
-    const result = spawnSync('git', ['rev-parse', '--show-toplevel'], {
+    // remote origin のURLをプロジェクト識別子として使用（クロスマシンで一意性を保証）
+    const originResult = spawnSync('git', ['remote', 'get-url', 'origin'], {
         cwd: process.cwd(),
         encoding: 'utf-8'
     });
 
-    if (result.status === 0 && result.stdout) {
-        const repoPath = result.stdout.trim();
-        const repoName = repoPath.split('/').pop() || 'unknown';
-        return repoName;
+    if (originResult.status === 0 && originResult.stdout) {
+        return normalizeRemoteUrl(originResult.stdout.trim());
     }
 
-    // gitリポジトリでない場合はディレクトリ名を使用
-    const dirName = process.cwd().split('/').pop() || 'unknown';
-    return dirName;
+    // remote origin がない場合はリポジトリのディレクトリ名にフォールバック
+    const toplevelResult = spawnSync('git', ['rev-parse', '--show-toplevel'], {
+        cwd: process.cwd(),
+        encoding: 'utf-8'
+    });
+
+    if (toplevelResult.status === 0 && toplevelResult.stdout) {
+        return toplevelResult.stdout.trim().split('/').pop() || 'unknown';
+    }
+
+    return process.cwd().split('/').pop() || 'unknown';
 }

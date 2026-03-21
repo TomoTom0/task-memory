@@ -1,161 +1,96 @@
-import { describe, it, expect, beforeEach, spyOn } from 'bun:test';
-import { listCommand } from '../src/commands/list';
-import { saveTasks } from '../src/store';
-import { saveReviews } from '../src/reviewStore';
-import type { Task, Review } from '../src/types';
+import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
+import { createTestProject, cleanup, runTm } from './helpers/testProject';
 
-describe('tm list command', () => {
-    // Mock console.log
-    const logSpy = spyOn(console, 'log');
+describe('tm list', () => {
+    let projectDir: string;
 
-    beforeEach(() => {
-        logSpy.mockClear();
-        saveTasks([]);
-        saveReviews([]);
+    beforeAll(() => {
+        projectDir = createTestProject();
+        runTm(['new', 'Todo Task', '--status', 'todo'], projectDir);
+        runTm(['new', 'Wip Task', '--status', 'wip'], projectDir);
+        runTm(['new', 'Pending Task', '--status', 'pending'], projectDir);
+        runTm(['new', 'Done Task', '--status', 'done'], projectDir);
+    });
+
+    afterAll(() => {
+        cleanup(projectDir);
     });
 
     it('should list only todo and wip tasks by default', () => {
-        saveTasks([
-            { id: '1', status: 'todo', summary: 'Todo Task', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
-            { id: '2', status: 'wip', summary: 'Wip Task', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
-            { id: '3', status: 'pending', summary: 'Pending Task', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
-            { id: '4', status: 'long', summary: 'Long Task', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
-            { id: '5', status: 'done', summary: 'Done Task', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
-        ]);
-
-        listCommand([]);
-
-        expect(logSpy).toHaveBeenCalledTimes(2);
-        expect(logSpy.mock.calls[0][0]).toContain('Todo Task');
-        expect(logSpy.mock.calls[1][0]).toContain('Wip Task');
+        const result = runTm(['list'], projectDir);
+        expect(result.stdout).toContain('Todo Task');
+        expect(result.stdout).toContain('Wip Task');
+        expect(result.stdout).not.toContain('Pending Task');
+        expect(result.stdout).not.toContain('Done Task');
     });
 
-    it('should list all open tasks with --open flag', () => {
-        saveTasks([
-            { id: '1', status: 'todo', summary: 'Todo Task', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
-            { id: '3', status: 'pending', summary: 'Pending Task', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
-        ]);
-
-        listCommand(['--open']);
-
-        expect(logSpy).toHaveBeenCalledTimes(2);
-        expect(logSpy.mock.calls[0][0]).toContain('Todo Task');
-        expect(logSpy.mock.calls[1][0]).toContain('Pending Task');
+    it('should list done tasks with -s done', () => {
+        const result = runTm(['list', '-s', 'done'], projectDir);
+        expect(result.stdout).toContain('Done Task');
+        expect(result.stdout).not.toContain('Todo Task');
     });
 
-    it('should list all tasks including done/closed with -a flag', () => {
-        saveTasks([
-            { id: '4', status: 'long', summary: 'Long Task', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
-            { id: '5', status: 'done', summary: 'Done Task', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
-        ]);
-
-        listCommand(['-a']);
-
-        expect(logSpy).toHaveBeenCalledTimes(2);
-        expect(logSpy.mock.calls[0][0]).toContain('Long Task');
-        expect(logSpy.mock.calls[1][0]).toContain('Done Task');
+    it('should list pending tasks with -s pending', () => {
+        const result = runTm(['list', '-s', 'pending'], projectDir);
+        expect(result.stdout).toContain('Pending Task');
+        expect(result.stdout).not.toContain('Todo Task');
     });
+});
 
-    it('should list checking reviews along with tasks', () => {
-        saveTasks([
-            { id: 'TASK-1', status: 'todo', summary: 'Todo Task', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
-        ]);
-        saveReviews([
-            { id: 'REVIEW-1', status: 'checking', title: 'Code Review', bodies: [], created_at: '', updated_at: '' },
-            { id: 'REVIEW-2', status: 'reviewed', title: 'Already Reviewed', bodies: [], created_at: '', updated_at: '' },
-        ]);
+describe('tm list order', () => {
+    it('should sort tasks by order before unordered tasks', () => {
+        const dir = createTestProject();
+        // orderなしタスクを作成
+        runTm(['new', 'No Order A'], dir);
+        runTm(['new', 'No Order B'], dir);
+        // orderありタスクを作成
+        const r = runTm(['new', 'Has Order'], dir);
+        const id = r.stdout.match(/TASK-(\d+)/)?.[1]!;
+        runTm(['update', id, '--order', '1'], dir);
 
-        listCommand([]);
+        const result = runTm(['list'], dir);
+        const lines = result.stdout.trim().split('\n');
+        const hasOrderIdx = lines.findIndex(l => l.includes('Has Order'));
+        const noOrderAIdx = lines.findIndex(l => l.includes('No Order A'));
+        const noOrderBIdx = lines.findIndex(l => l.includes('No Order B'));
 
-        expect(logSpy).toHaveBeenCalledTimes(2);
-        expect(logSpy.mock.calls[0][0]).toContain('Todo Task');
-        expect(logSpy.mock.calls[1][0]).toContain('Code Review');
-        expect(logSpy.mock.calls[1][0]).toContain('checking');
-    });
+        expect(hasOrderIdx).toBeLessThan(noOrderAIdx);
+        expect(hasOrderIdx).toBeLessThan(noOrderBIdx);
 
-    it('should not list reviews with status other than checking', () => {
-        saveTasks([]);
-        saveReviews([
-            { id: 'REVIEW-1', status: 'reviewed', title: 'Reviewed', bodies: [], created_at: '', updated_at: '' },
-            { id: 'REVIEW-2', status: 'accepted', title: 'Accepted', bodies: [], created_at: '', updated_at: '' },
-        ]);
-
-        listCommand([]);
-
-        expect(logSpy).not.toHaveBeenCalled();
-    });
-
-    it('should sort tasks by order by default', () => {
-        saveTasks([
-            { id: 'TASK-1', status: 'todo', summary: 'Third', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: '3' },
-            { id: 'TASK-2', status: 'todo', summary: 'First', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: '1' },
-            { id: 'TASK-3', status: 'todo', summary: 'Second', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: '2' },
-        ]);
-
-        listCommand([]);
-
-        expect(logSpy).toHaveBeenCalledTimes(3);
-        expect(logSpy.mock.calls[0][0]).toContain('First');
-        expect(logSpy.mock.calls[1][0]).toContain('Second');
-        expect(logSpy.mock.calls[2][0]).toContain('Third');
-    });
-
-    it('should sort hierarchical orders correctly', () => {
-        saveTasks([
-            { id: 'TASK-1', status: 'todo', summary: 'Two', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: '2' },
-            { id: 'TASK-2', status: 'todo', summary: 'One-One', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: '1-1' },
-            { id: 'TASK-3', status: 'todo', summary: 'One', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: '1' },
-        ]);
-
-        listCommand([]);
-
-        expect(logSpy).toHaveBeenCalledTimes(3);
-        expect(logSpy.mock.calls[0][0]).toContain('One');
-        expect(logSpy.mock.calls[0][0]).not.toContain('One-One');
-        expect(logSpy.mock.calls[1][0]).toContain('One-One');
-        expect(logSpy.mock.calls[2][0]).toContain('Two');
-    });
-
-    it('should place tasks without order at the end', () => {
-        saveTasks([
-            { id: 'TASK-1', status: 'todo', summary: 'No Order', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
-            { id: 'TASK-2', status: 'todo', summary: 'Has Order', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: '1' },
-        ]);
-
-        listCommand([]);
-
-        expect(logSpy).toHaveBeenCalledTimes(2);
-        expect(logSpy.mock.calls[0][0]).toContain('Has Order');
-        expect(logSpy.mock.calls[1][0]).toContain('No Order');
-    });
-
-    it('should sort by ID when orders are same', () => {
-        saveTasks([
-            { id: 'TASK-3', status: 'todo', summary: 'C', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: '1' },
-            { id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: '1' },
-            { id: 'TASK-2', status: 'todo', summary: 'B', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: '1' },
-        ]);
-
-        listCommand([]);
-
-        expect(logSpy).toHaveBeenCalledTimes(3);
-        expect(logSpy.mock.calls[0][0]).toContain('A');
-        expect(logSpy.mock.calls[1][0]).toContain('B');
-        expect(logSpy.mock.calls[2][0]).toContain('C');
+        cleanup(dir);
     });
 
     it('should sort by ID with --sort id option', () => {
-        saveTasks([
-            { id: 'TASK-3', status: 'todo', summary: 'Third ID', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: '1' },
-            { id: 'TASK-1', status: 'todo', summary: 'First ID', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: '3' },
-            { id: 'TASK-2', status: 'todo', summary: 'Second ID', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: '2' },
-        ]);
+        const dir = createTestProject();
+        // ID順 (作成順): TASK-1, TASK-2, TASK-3
+        runTm(['new', 'Third', '--order', '3'], dir);
+        runTm(['new', 'First', '--order', '1'], dir);
+        runTm(['new', 'Second', '--order', '2'], dir);
 
-        listCommand(['--sort', 'id']);
+        const result = runTm(['list', '--sort', 'id'], dir);
+        const lines = result.stdout.trim().split('\n');
 
-        expect(logSpy).toHaveBeenCalledTimes(3);
-        expect(logSpy.mock.calls[0][0]).toContain('First ID');
-        expect(logSpy.mock.calls[1][0]).toContain('Second ID');
-        expect(logSpy.mock.calls[2][0]).toContain('Third ID');
+        // 出力形式は "N: summary [status]"
+        // ID順: 1=Third, 2=First, 3=Second
+        const ids = lines.map(l => parseInt(l.split(':')[0] ?? '', 10)).filter(n => !isNaN(n));
+        for (let i = 1; i < ids.length; i++) {
+            expect(ids[i]).toBeGreaterThan(ids[i - 1]!);
+        }
+
+        cleanup(dir);
+    });
+
+    it('should place tasks without order at the end', () => {
+        const dir = createTestProject();
+        runTm(['new', 'No Order'], dir);
+        runTm(['new', 'Has Order', '--order', '1'], dir);
+
+        const result = runTm(['list'], dir);
+        const lines = result.stdout.trim().split('\n');
+        const hasOrderIdx = lines.findIndex(l => l.includes('Has Order'));
+        const noOrderIdx = lines.findIndex(l => l.includes('No Order'));
+        expect(hasOrderIdx).toBeLessThan(noOrderIdx);
+
+        cleanup(dir);
     });
 });

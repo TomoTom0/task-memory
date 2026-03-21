@@ -1,4 +1,4 @@
-import { loadSyncConfig, saveSyncConfig, loadStore, saveStore } from '../store';
+import { loadSyncConfig, saveSyncConfig, loadStore, saveStore, getNextId } from '../store';
 import {
     initSyncRepo,
     isSyncInitialized,
@@ -7,8 +7,55 @@ import {
     listSyncedProjects,
     generateSyncId,
     getSyncDir,
+    generateAgeKey,
 } from '../syncStore';
-import type { SyncConfig } from '../types';
+import { existsSync } from 'fs';
+import { join } from 'path';
+import type { SyncConfig, Task } from '../types';
+
+export interface MergeResult {
+    tasks: Task[];
+    idCollisions: number;
+    conflictsResolved: number;
+}
+
+/**
+ * id+created_at の複合キーで同一性を判定してリモートタスクをローカルにマージする。
+ *
+ * - 同じ id & created_at → 同一タスク: updated_at が新しい方を採用
+ * - 同じ id & 異なる created_at → ID衝突: リモートタスクに新IDを割り当てて追加
+ * - id が存在しない → 新規タスク: そのまま追加
+ */
+export function mergeTasks(localTasks: Task[], remoteTasks: Task[]): MergeResult {
+    const merged = [...localTasks];
+    let idCollisions = 0;
+    let conflictsResolved = 0;
+
+    for (const remoteTask of remoteTasks) {
+        const sameTaskIndex = merged.findIndex(
+            t => t.id === remoteTask.id && t.created_at === remoteTask.created_at
+        );
+
+        if (sameTaskIndex >= 0) {
+            const existing = merged[sameTaskIndex];
+            if (existing && new Date(remoteTask.updated_at) > new Date(existing.updated_at)) {
+                merged[sameTaskIndex] = remoteTask;
+                conflictsResolved++;
+            }
+        } else {
+            const hasIdCollision = merged.some(t => t.id === remoteTask.id);
+            if (hasIdCollision) {
+                const newId = getNextId(merged);
+                merged.push({ ...remoteTask, id: newId });
+                idCollisions++;
+            } else {
+                merged.push(remoteTask);
+            }
+        }
+    }
+
+    return { tasks: merged, idCollisions, conflictsResolved };
+}
 
 function parseArgs(args: string[]): { subcommand: string; options: Record<string, string | boolean>; positional: string[] } {
     const subcommand = args[0] || '';
@@ -63,13 +110,31 @@ function handleAdd(options: Record<string, string | boolean>): void {
         auto: false,
     };
 
+    // --encrypt オプションがある場合は age 鍵を設定
+    if (options.encrypt) {
+        const keyPath = typeof options.key === 'string'
+            ? options.key
+            : join(getSyncDir(), 'age.key');
+
+        if (!existsSync(keyPath)) {
+            if (!generateAgeKey(keyPath)) {
+                console.error('Failed to generate age key.');
+                process.exit(1);
+            }
+            console.log(`Generated age key: ${keyPath}`);
+        }
+
+        syncConfig.encryptKeyFile = keyPath;
+        console.log(`Encryption enabled with key: ${keyPath}`);
+    }
+
     saveSyncConfig(syncConfig);
     console.log(`Added to sync with id: ${syncId}`);
 
     // --push オプションがある場合は即座にpush
     if (options.push) {
         const store = loadStore();
-        if (pushToSync(syncId, store)) {
+        if (pushToSync(syncId, store, syncConfig.encryptKeyFile)) {
             console.log('Pushed to sync repository.');
         }
     }
@@ -99,7 +164,7 @@ function handlePush(): void {
     }
 
     const store = loadStore();
-    if (pushToSync(syncConfig.id, store)) {
+    if (pushToSync(syncConfig.id, store, syncConfig.encryptKeyFile)) {
         console.log(`Pushed to sync repository. (id: ${syncConfig.id})`);
     } else {
         process.exit(1);
@@ -113,7 +178,7 @@ function handlePull(options: Record<string, string | boolean>): void {
         process.exit(1);
     }
 
-    const remoteStore = pullFromSync(syncConfig.id);
+    const remoteStore = pullFromSync(syncConfig.id, syncConfig.encryptKeyFile);
     if (!remoteStore) {
         process.exit(1);
     }
@@ -122,22 +187,13 @@ function handlePull(options: Record<string, string | boolean>): void {
     const merge = options.merge === true;
 
     if (merge) {
-        // マージモード: 両方のタスクを統合（IDが重複する場合は更新日時が新しい方を採用）
-        const mergedTasks = [...currentStore.tasks];
-        for (const remoteTask of remoteStore.tasks) {
-            const existingIndex = mergedTasks.findIndex(t => t.id === remoteTask.id);
-            if (existingIndex >= 0) {
-                const existing = mergedTasks[existingIndex];
-                if (existing && new Date(remoteTask.updated_at) > new Date(existing.updated_at)) {
-                    mergedTasks[existingIndex] = remoteTask;
-                }
-            } else {
-                mergedTasks.push(remoteTask);
-            }
-        }
-        currentStore.tasks = mergedTasks;
+        const result = mergeTasks(currentStore.tasks, remoteStore.tasks);
+        currentStore.tasks = result.tasks;
         saveStore(currentStore);
-        console.log(`Merged from sync repository. (${remoteStore.tasks.length} tasks)`);
+        let msg = `Merged from sync repository. (${remoteStore.tasks.length} remote tasks)`;
+        if (result.idCollisions > 0) msg += ` ID collisions resolved: ${result.idCollisions}.`;
+        if (result.conflictsResolved > 0) msg += ` Conflicts resolved: ${result.conflictsResolved}.`;
+        console.log(msg);
     } else {
         // 上書きモード
         currentStore.tasks = remoteStore.tasks;
@@ -209,7 +265,7 @@ function showHelp(): void {
 Usage: tm sync <subcommand> [options]
 
 Subcommands:
-  add [--id <name>] [--push]
+  add [--id <name>] [--push] [--encrypt [--key <path>]]
                           Add current project to sync
   remove                  Remove current project from sync
   push                    Push tasks to sync repository
@@ -220,6 +276,8 @@ Subcommands:
 
 Examples:
   tm sync add --id my-project --push
+  tm sync add --encrypt                    # age鍵を自動生成して暗号化を有効化
+  tm sync add --encrypt --key ~/.age.key  # 既存の鍵を使用
   tm sync push
   tm sync pull --merge
   tm sync set auto
