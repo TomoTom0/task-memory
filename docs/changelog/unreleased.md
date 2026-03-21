@@ -13,6 +13,7 @@
 
 - **テスト基盤の改善** (`TASK-4`): テストがプロジェクト本体のタスクストアを上書きしてしまう問題を修正しました。`test/helpers/testProject.ts` を新設し、一時 git リポジトリを使ったサブプロセス方式に切り替えることで完全に分離しました。
 - **sync: マージロジックの改善** (`TASK-5`): `id + created_at` の複合キーで同一タスクを判定するようになりました。ID のみの衝突は新しい ID を割り当てて取り込みます。
+- **sync: age コマンド未インストール時のエラー改善** (`TASK-7`): `encryptData`・`decryptData`・`generateAgeKey` で `spawnSync` の `result.error` を確認するようにしました。`age`/`age-keygen` がインストールされていない場合に「コマンドが見つかりません」という明確なエラーメッセージを表示します。
 
 ## Known Issues
 
