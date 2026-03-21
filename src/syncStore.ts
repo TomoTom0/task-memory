@@ -111,6 +111,10 @@ export function encryptData(data: string, keyFile: string): string | null {
         encoding: 'utf-8',
     });
 
+    if (result.error) {
+        console.error(`Encryption failed: ${result.error.message}. Is 'age' command installed and in your PATH?`);
+        return null;
+    }
     if (result.status !== 0) {
         console.error(`Encryption failed: ${result.stderr}`);
         return null;
@@ -128,6 +132,10 @@ export function decryptData(ciphertext: string, keyFile: string): string | null 
         encoding: 'utf-8',
     });
 
+    if (result.error) {
+        console.error(`Decryption failed: ${result.error.message}. Is 'age' command installed and in your PATH?`);
+        return null;
+    }
     if (result.status !== 0) {
         console.error(`Decryption failed: ${result.stderr}`);
         return null;
@@ -143,6 +151,10 @@ export function generateAgeKey(outputPath: string): boolean {
     const result = spawnSync('age-keygen', ['-o', outputPath], {
         encoding: 'utf-8',
     });
+    if (result.error) {
+        console.error(`Key generation failed: ${result.error.message}. Is 'age-keygen' command installed and in your PATH?`);
+        return false;
+    }
     return result.status === 0;
 }
 
