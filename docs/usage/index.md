@@ -2,6 +2,8 @@
 
 `task-memory` (tm) は、AIエージェントや開発者がタスクの状態を管理し、コンテキストの喪失を防ぐためのツールです。
 
+このドキュメントは `tm docs` コマンドでいつでも参照できます。
+
 ## インストール方法
 
 ### ローカルインストール
@@ -254,19 +256,13 @@ tm finish 1
 
 ## 同期機能 (`tm sync`)
 
-タスクデータを共有ディレクトリ経由で複数環境間で同期します。
+タスクデータを `~/.local/task-memory/` 経由で複数環境間で同期します。
 
 ### セットアップ
 
 ```bash
 # 同期を有効化（sync ID を自動生成）
 tm sync add
-
-# 暗号化を有効化（age 鍵を自動生成）
-tm sync add --encrypt
-
-# 既存の鍵ファイルを指定して暗号化
-tm sync add --encrypt --key /path/to/age.key
 
 # 同期 ID を指定（複数マシン間で同じIDを使う場合）
 tm sync add --id my-project-sync
@@ -275,14 +271,20 @@ tm sync add --id my-project-sync
 ### 基本操作
 
 ```bash
-# タスクをプッシュ
-tm sync push
+# タスクを同期ディレクトリに保存
+tm sync save
 
-# タスクをプル（リモートで上書き）
-tm sync pull
+# 同期ディレクトリからタスクを読み込み（上書き）
+tm sync load
 
-# タスクをプルしてローカルとマージ
-tm sync pull --merge
+# 読み込み時にローカルとマージ
+tm sync load --merge
+
+# 保存・コミット・プッシュを一括実行
+tm sync upload
+
+# コミットメッセージを指定
+tm sync upload --message "作業完了"
 
 # 同期状態を確認
 tm sync status
@@ -290,6 +292,27 @@ tm sync status
 # 同期を無効化
 tm sync remove
 ```
+
+### GitHubリポジトリとの連携
+
+```bash
+# GitHubにprivateリポジトリを作成してremoteに設定（gh コマンド必要）
+tm sync repo create
+
+# リポジトリ名を指定
+tm sync repo create --name my-sync-repo
+
+# publicリポジトリとして作成
+tm sync repo create --public
+
+# 既存のリポジトリをremoteに設定
+tm sync repo set git@github.com:user/repo.git
+
+# 現在のremoteを確認
+tm sync repo show
+```
+
+リポジトリ設定後は `tm git push` / `tm git pull` で同期できます。
 
 ### マージ動作
 
@@ -301,14 +324,24 @@ tm sync remove
 
 ### 暗号化
 
-`--encrypt` オプションを使うと [age](https://age-encryption.org/) によって SSH 鍵互換の暗号化が有効になります。
+[age](https://age-encryption.org/) による非対称暗号化をサポートします。
 
 ```bash
-# 暗号化付きで同期を有効化（鍵は自動生成）
-tm sync add --encrypt
-# → ~/.local/task-memory/age.key に鍵ファイルを生成
+# identity ファイルを生成してグローバルに設定（公開鍵も自動設定）
+tm sync set key --generate --global
 
-# 同期ファイルは .json.age として保存され、pull 時に自動復号される
+# 既存の identity ファイルをグローバルに設定
+tm sync set key ~/.age.key --global
+
+# 暗号化を有効化（グローバル）
+tm sync set encrypt on --global
+
+# 特定プロジェクトのみ暗号化を無効化
+tm sync set encrypt off
 ```
 
-**注意**: 鍵ファイルを紛失するとデータを復元できません。鍵ファイルは安全な場所にバックアップしてください。
+- 暗号化時: `identity` ファイルから公開鍵を抽出して暗号化（push 側）
+- 復号時: `identity` ファイルの秘密鍵で復号（pull 側）
+- 同期ファイルは `.json.age` として保存される
+
+**注意**: identity ファイルを紛失するとデータを復元できません。安全な場所にバックアップしてください。

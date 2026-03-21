@@ -18,6 +18,16 @@ Default to using Bun instead of Node.js.
 - Prefer `Bun.file` over `node:fs`'s readFile/writeFile
 - Bun.$`ls` instead of execa.
 
+## Build and Deploy
+
+ソースコードの変更完了後は必ず以下を実行すること：
+
+```bash
+bun run build
+```
+
+出力: `dist/tm`（実行可能バイナリ）
+
 ## Testing
 
 Use `bun test` to run tests.

@@ -56,8 +56,9 @@ describe('encryptData / decryptData', () => {
     });
 
     it('データを暗号化して復号できる', () => {
+        const pubkey = getPublicKeyFromIdentityFile(KEY_FILE)!;
         const original = JSON.stringify({ hello: 'world', tasks: [] });
-        const encrypted = encryptData(original, KEY_FILE);
+        const encrypted = encryptData(original, pubkey);
         expect(encrypted).not.toBeNull();
         expect(encrypted).not.toBe(original);
 
@@ -66,7 +67,8 @@ describe('encryptData / decryptData', () => {
     });
 
     it('暗号化データは ASCII armor 形式', () => {
-        const encrypted = encryptData('test', KEY_FILE);
+        const pubkey = getPublicKeyFromIdentityFile(KEY_FILE)!;
+        const encrypted = encryptData('test', pubkey);
         expect(encrypted).toMatch(/-----BEGIN AGE ENCRYPTED FILE-----/);
     });
 
@@ -74,7 +76,8 @@ describe('encryptData / decryptData', () => {
         const otherKey = join(TMP_DIR, 'other.key');
         generateAgeKey(otherKey);
 
-        const encrypted = encryptData('secret data', KEY_FILE);
+        const pubkey = getPublicKeyFromIdentityFile(KEY_FILE)!;
+        const encrypted = encryptData('secret data', pubkey);
         const decrypted = decryptData(encrypted!, otherKey);
         expect(decrypted).toBeNull();
     });
