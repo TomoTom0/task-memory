@@ -120,8 +120,10 @@ function handleAdd(options: Record<string, string | boolean>): void {
 
     // --save オプションがある場合は即座にsave
     if (options.save) {
+        const globalConfig = loadGlobalConfig();
+        const { recipient } = resolveEncryptSettings(syncConfig, globalConfig);
         const store = loadStore();
-        if (pushToSync(syncId, store, resolveRecipient(syncConfig))) {
+        if (pushToSync(syncId, store, recipient)) {
             console.log('Saved to sync directory.');
         }
     }
@@ -156,21 +158,6 @@ export function resolveEncryptSettings(
     };
 }
 
-function isEncryptEnabled(syncConfig: SyncConfig): boolean {
-    const globalConfig = loadGlobalConfig();
-    return resolveEncryptSettings(syncConfig, globalConfig).enabled;
-}
-
-function resolveRecipient(syncConfig: SyncConfig): string | undefined {
-    const globalConfig = loadGlobalConfig();
-    return resolveEncryptSettings(syncConfig, globalConfig).recipient;
-}
-
-function resolveIdentityFile(syncConfig: SyncConfig): string | undefined {
-    const globalConfig = loadGlobalConfig();
-    return resolveEncryptSettings(syncConfig, globalConfig).identityFile;
-}
-
 function handleSave(): void {
     const syncConfig = loadSyncConfig();
     if (!syncConfig?.enabled) {
@@ -178,8 +165,10 @@ function handleSave(): void {
         process.exit(1);
     }
 
+    const globalConfig = loadGlobalConfig();
+    const { recipient } = resolveEncryptSettings(syncConfig, globalConfig);
     const store = loadStore();
-    if (pushToSync(syncConfig.id, store, resolveRecipient(syncConfig))) {
+    if (pushToSync(syncConfig.id, store, recipient)) {
         console.log(`Saved to sync directory. (id: ${syncConfig.id})`);
     } else {
         process.exit(1);
@@ -193,7 +182,9 @@ function handleLoad(options: Record<string, string | boolean>): void {
         process.exit(1);
     }
 
-    const remoteStore = pullFromSync(syncConfig.id, resolveIdentityFile(syncConfig));
+    const globalConfig = loadGlobalConfig();
+    const { identityFile } = resolveEncryptSettings(syncConfig, globalConfig);
+    const remoteStore = pullFromSync(syncConfig.id, identityFile);
     if (!remoteStore) {
         process.exit(1);
     }
@@ -239,22 +230,6 @@ function handleSetKey(positional: string[], options: Record<string, string | boo
             console.log(`Generated key file: ${identityFile}`);
         } else {
             console.log(`Using existing key file: ${identityFile}`);
-        }
-        // identity生成時は公開鍵をrecipientとして自動設定
-        const pubkey = getPublicKeyFromIdentityFile(identityFile);
-        if (pubkey) {
-            if (isGlobal) {
-                const globalConfig = loadGlobalConfig();
-                globalConfig.defaultEncryptRecipient = pubkey;
-                saveGlobalConfig(globalConfig);
-            } else {
-                const syncConfig = loadSyncConfig();
-                if (syncConfig?.enabled) {
-                    syncConfig.encryptRecipient = pubkey;
-                    saveSyncConfig(syncConfig);
-                }
-            }
-            console.log(`Recipient set to: ${pubkey}`);
         }
     } else {
         identityFile = pathArg as string;
@@ -375,13 +350,11 @@ function handleStatus(): void {
         console.log(`ID: ${syncConfig.id}`);
         console.log(`Enabled: ${syncConfig.enabled ? 'Yes' : 'No'}`);
         console.log(`Auto: ${syncConfig.auto ? 'Yes' : 'No'}`);
-        const encryptEnabled = syncConfig.encryptEnabled ?? globalConfig.defaultEncryptEnabled ?? false;
+        const { enabled: encryptEnabled, identityFile: identity, recipient } = resolveEncryptSettings(syncConfig, globalConfig);
         console.log(`Encrypt: ${encryptEnabled ? 'on' : 'off'}${syncConfig.encryptEnabled === undefined ? ' (global)' : ''}`);
         if (encryptEnabled) {
-            const identity = syncConfig.encryptIdentityFile ?? globalConfig.defaultEncryptIdentityFile;
-            const recipient = syncConfig.encryptRecipient ?? globalConfig.defaultEncryptRecipient;
-            if (identity) console.log(`Key: ${identity}${syncConfig.encryptIdentityFile ? '' : ' (global)'}`);
-            if (recipient) console.log(`Recipient: ${recipient}${syncConfig.encryptRecipient ? '' : ' (global)'}`);
+            if (identity) console.log(`Key: ${identity}${syncConfig.encryptIdentityFile === undefined ? ' (global)' : ''}`);
+            if (recipient) console.log(`Recipient: ${recipient}${syncConfig.encryptRecipient === undefined ? ' (global)' : ''}`);
         }
     } else {
         console.log('Current project is not synced.');
@@ -414,8 +387,10 @@ function handleUpload(options: Record<string, string | boolean>): void {
     }
 
     // save
+    const globalConfig = loadGlobalConfig();
+    const { recipient } = resolveEncryptSettings(syncConfig, globalConfig);
     const store = loadStore();
-    if (!pushToSync(syncConfig.id, store, resolveRecipient(syncConfig))) {
+    if (!pushToSync(syncConfig.id, store, recipient)) {
         process.exit(1);
     }
     console.log(`Saved. (id: ${syncConfig.id})`);
