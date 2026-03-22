@@ -12,6 +12,7 @@ import { syncCommand } from './commands/sync';
 import { gitCommand } from './commands/git';
 import { setAfterSaveCallback } from './store';
 import { tryAutoSync } from './syncStore';
+import usageDocs from '../docs/usage/index.md' with { type: 'text' };
 
 // 自動同期コールバックを設定
 setAfterSaveCallback((store) => {
@@ -64,6 +65,9 @@ switch (command) {
     break;
   case 'git':
     gitCommand(commandArgs);
+    break;
+  case 'docs':
+    console.log(usageDocs);
     break;
   case 'help':
   case '--help':
@@ -133,6 +137,9 @@ Commands:
 
   git <git-command> [args]
     Run git commands in ~/.local/task-memory/ repository.
+
+  docs
+    Show usage documentation.
 
 Examples:
   tm new "Refactor auth" --status wip --body "Starting now" --priority high

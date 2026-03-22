@@ -11,6 +11,9 @@ const CONFIG_FILE = join(SYNC_DIR, 'config.json');
 
 export interface SyncGlobalConfig {
     defaultAuto: boolean;
+    defaultEncryptEnabled?: boolean;
+    defaultEncryptIdentityFile?: string;  // age identity ファイルパス（秘密鍵、復号用）
+    defaultEncryptRecipient?: string;     // age 公開鍵文字列（暗号化用）
 }
 
 export function getSyncDir(): string {
@@ -97,16 +100,10 @@ export function getPublicKeyFromIdentityFile(keyFile: string): string | null {
 
 /**
  * データを age で暗号化する（ASCII armor 出力）。
- * identity ファイルの公開鍵を recipient として使用する。
+ * recipient は公開鍵文字列（age1...）を直接受け取る。
  */
-export function encryptData(data: string, keyFile: string): string | null {
-    const pubkey = getPublicKeyFromIdentityFile(keyFile);
-    if (!pubkey) {
-        console.error(`Could not read public key from ${keyFile}`);
-        return null;
-    }
-
-    const result = spawnSync('age', ['-e', '-r', pubkey, '-a'], {
+export function encryptData(data: string, recipient: string): string | null {
+    const result = spawnSync('age', ['-e', '-r', recipient, '-a'], {
         input: data,
         encoding: 'utf-8',
     });
@@ -158,20 +155,20 @@ export function generateAgeKey(outputPath: string): boolean {
     return result.status === 0;
 }
 
-export function pushToSync(syncId: string, store: TaskStore, encryptKeyFile?: string): boolean {
+export function pushToSync(syncId: string, store: TaskStore, encryptRecipient?: string): boolean {
     if (!isSyncInitialized()) {
         console.error('Sync repository not initialized. Run "tm sync add" first.');
         return false;
     }
 
-    const projectFile = encryptKeyFile
+    const projectFile = encryptRecipient
         ? getEncryptedProjectFilePath(syncId)
         : getProjectFilePath(syncId);
 
     try {
         const jsonData = JSON.stringify(store, null, 2);
-        if (encryptKeyFile) {
-            const encrypted = encryptData(jsonData, encryptKeyFile);
+        if (encryptRecipient) {
+            const encrypted = encryptData(jsonData, encryptRecipient);
             if (!encrypted) return false;
             writeFileSync(projectFile, encrypted, 'utf-8');
         } else {
@@ -184,7 +181,7 @@ export function pushToSync(syncId: string, store: TaskStore, encryptKeyFile?: st
     }
 }
 
-export function tryAutoSync(syncConfig: SyncConfig | undefined, store: TaskStore): void {
+export function tryAutoSync(syncConfig: SyncConfig | undefined, store: TaskStore, encryptRecipient?: string): void {
     if (!syncConfig?.enabled || !syncConfig.auto) {
         return;
     }
@@ -193,10 +190,10 @@ export function tryAutoSync(syncConfig: SyncConfig | undefined, store: TaskStore
         return;
     }
 
-    pushToSync(syncConfig.id, store, syncConfig.encryptKeyFile);
+    pushToSync(syncConfig.id, store, encryptRecipient);
 }
 
-export function pullFromSync(syncId: string, encryptKeyFile?: string): TaskStore | null {
+export function pullFromSync(syncId: string, encryptIdentityFile?: string): TaskStore | null {
     if (!isSyncInitialized()) {
         console.error('Sync repository not initialized. Run "tm sync add" first.');
         return null;
@@ -206,9 +203,9 @@ export function pullFromSync(syncId: string, encryptKeyFile?: string): TaskStore
     const jsonFile = getProjectFilePath(syncId);
 
     try {
-        if (encryptKeyFile && existsSync(ageFile)) {
+        if (encryptIdentityFile && existsSync(ageFile)) {
             const ciphertext = readFileSync(ageFile, 'utf-8');
-            const decrypted = decryptData(ciphertext, encryptKeyFile);
+            const decrypted = decryptData(ciphertext, encryptIdentityFile);
             if (!decrypted) return null;
             return JSON.parse(decrypted) as TaskStore;
         }
