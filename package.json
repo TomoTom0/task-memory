@@ -19,14 +19,14 @@
     "claude"
   ],
   "bin": {
-    "tm": "dist/tm"
+    "tm": "dist/index.js"
   },
   "files": [
-    "dist"
+    "dist/index.js"
   ],
   "scripts": {
-    "build": "bun build src/index.ts --outfile=dist/tm --compile",
-    "prepublishOnly": "npm run build"
+    "build": "bun build src/index.ts --outfile=dist/index.js --target=node && chmod +x dist/index.js && bun build src/index.ts --outfile=dist/tm --compile",
+    "prepublishOnly": "bun run build"
   },
   "engines": {
     "node": ">=18"
