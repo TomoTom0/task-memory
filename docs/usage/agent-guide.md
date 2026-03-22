@@ -28,14 +28,16 @@ agentが複数タスクを並行して把握する際に、作業の優先順位
 
 必要に応じて以下も追記してください。
 
-```markdown
+---
+
 ### コードレビュー依頼
 
 `tm review` コマンドでコードレビューを依頼できます。
 
-\`\`\`bash
+```bash
 tm review new "レビュー対象と観点" --body "詳細説明"
 tm review list
 tm review accept <ID>
-\`\`\`
 ```
+
+---

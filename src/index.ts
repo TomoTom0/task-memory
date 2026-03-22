@@ -69,16 +69,18 @@ switch (command) {
     gitCommand(commandArgs);
     break;
   case 'docs': {
-    const docPage = commandArgs[0];
-    if (!docPage || docPage === 'usage') {
-      console.log(usageDocs);
-    } else if (docPage === 'agent-claude-md') {
-      console.log(agentClaudeMdDocs);
-    } else if (docPage === 'agent-guide') {
-      console.log(agentGuideDocs);
+    const docMap: Record<string, string> = {
+      'usage': usageDocs,
+      'agent-claude-md': agentClaudeMdDocs,
+      'agent-guide': agentGuideDocs,
+    };
+    const docPage = commandArgs[0] || 'usage';
+
+    if (docMap[docPage]) {
+      console.log(docMap[docPage]);
     } else {
       console.error(`Error: Unknown docs page '${docPage}'.`);
-      console.error('Available pages: usage (default), agent-claude-md, agent-guide');
+      console.error(`Available pages: usage (default), ${Object.keys(docMap).filter(k => k !== 'usage').join(', ')}`);
       process.exit(1);
     }
     break;
