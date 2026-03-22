@@ -143,21 +143,32 @@ function handleRemove(): void {
     console.log(`Removed from sync. (id was: ${existingConfig.id})`);
 }
 
+export function resolveEncryptSettings(
+    syncConfig: SyncConfig,
+    globalConfig: { defaultEncryptEnabled?: boolean; defaultEncryptRecipient?: string; defaultEncryptIdentityFile?: string }
+): { enabled: boolean; recipient: string | undefined; identityFile: string | undefined } {
+    const enabled = syncConfig.encryptEnabled ?? globalConfig.defaultEncryptEnabled ?? false;
+    if (!enabled) return { enabled: false, recipient: undefined, identityFile: undefined };
+    return {
+        enabled: true,
+        recipient: syncConfig.encryptRecipient ?? globalConfig.defaultEncryptRecipient,
+        identityFile: syncConfig.encryptIdentityFile ?? globalConfig.defaultEncryptIdentityFile,
+    };
+}
+
 function isEncryptEnabled(syncConfig: SyncConfig): boolean {
     const globalConfig = loadGlobalConfig();
-    return syncConfig.encryptEnabled ?? globalConfig.defaultEncryptEnabled ?? false;
+    return resolveEncryptSettings(syncConfig, globalConfig).enabled;
 }
 
 function resolveRecipient(syncConfig: SyncConfig): string | undefined {
-    if (!isEncryptEnabled(syncConfig)) return undefined;
     const globalConfig = loadGlobalConfig();
-    return syncConfig.encryptRecipient ?? globalConfig.defaultEncryptRecipient;
+    return resolveEncryptSettings(syncConfig, globalConfig).recipient;
 }
 
 function resolveIdentityFile(syncConfig: SyncConfig): string | undefined {
-    if (!isEncryptEnabled(syncConfig)) return undefined;
     const globalConfig = loadGlobalConfig();
-    return syncConfig.encryptIdentityFile ?? globalConfig.defaultEncryptIdentityFile;
+    return resolveEncryptSettings(syncConfig, globalConfig).identityFile;
 }
 
 function handleSave(): void {
