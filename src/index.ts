@@ -13,6 +13,8 @@ import { gitCommand } from './commands/git';
 import { setAfterSaveCallback } from './store';
 import { tryAutoSync } from './syncStore';
 import usageDocs from '../docs/usage/index.md' with { type: 'text' };
+import agentClaudeMdDocs from '../docs/usage/agent-claude-md.md' with { type: 'text' };
+import agentGuideDocs from '../docs/usage/agent-guide.md' with { type: 'text' };
 
 // 自動同期コールバックを設定
 setAfterSaveCallback((store) => {
@@ -66,9 +68,21 @@ switch (command) {
   case 'git':
     gitCommand(commandArgs);
     break;
-  case 'docs':
-    console.log(usageDocs);
+  case 'docs': {
+    const docPage = commandArgs[0];
+    if (!docPage || docPage === 'usage') {
+      console.log(usageDocs);
+    } else if (docPage === 'agent-claude-md') {
+      console.log(agentClaudeMdDocs);
+    } else if (docPage === 'agent-guide') {
+      console.log(agentGuideDocs);
+    } else {
+      console.error(`Error: Unknown docs page '${docPage}'.`);
+      console.error('Available pages: usage (default), agent-claude-md, agent-guide');
+      process.exit(1);
+    }
     break;
+  }
   case 'help':
   case '--help':
   case '-h':
@@ -138,8 +152,8 @@ Commands:
   git <git-command> [args]
     Run git commands in ~/.local/task-memory/ repository.
 
-  docs
-    Show usage documentation.
+  docs [page]
+    Show documentation. Pages: usage (default), agent-claude-md, agent-guide
 
 Examples:
   tm new "Refactor auth" --status wip --body "Starting now" --priority high
