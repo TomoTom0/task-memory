@@ -198,6 +198,18 @@ Options:
         return;
     }
 
+    // Show pending/long counts when using default filter (todo/wip only)
+    if (!showAll && !showOpen && !filterStatus) {
+        const pendingCount = tasks.filter(t => t.status === 'pending').length;
+        const longCount = tasks.filter(t => t.status === 'long').length;
+        const hiddenCounts: string[] = [];
+        if (pendingCount > 0) hiddenCounts.push(`pending: ${pendingCount}`);
+        if (longCount > 0) hiddenCounts.push(`long: ${longCount}`);
+        if (hiddenCounts.length > 0) {
+            console.log(`(${hiddenCounts.join(', ')})`);
+        }
+    }
+
     displayTasks.forEach(task => {
         // Format: 1: Summary [status] (Priority: P) [v: 1.0]
         // Extract number from ID for display if possible, else use full ID

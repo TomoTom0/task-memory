@@ -2,7 +2,7 @@
 
 ## New Features
 
-（変更内容をここに記載）
+- `tm list` のデフォルト表示時に `pending`/`long` ステータスのタスク件数を表示するように変更（`--open` や `--status-all` 指定時は非表示）
 
 ## Bug Fixes
 

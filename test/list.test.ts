@@ -35,6 +35,16 @@ describe('tm list', () => {
         expect(result.stdout).toContain('Pending Task');
         expect(result.stdout).not.toContain('Todo Task');
     });
+
+    it('should show pending/long counts in default list', () => {
+        const result = runTm(['list'], projectDir);
+        expect(result.stdout).toContain('pending: 1');
+    });
+
+    it('should not show pending/long counts with --open', () => {
+        const result = runTm(['list', '--open'], projectDir);
+        expect(result.stdout).not.toContain('pending: 1');
+    });
 });
 
 describe('tm list order', () => {
