@@ -28,6 +28,14 @@ bun run build
 
 出力: `dist/tm`（実行可能バイナリ）
 
+## npm Publish
+
+npmパッケージとして公開する際は `--auth-type=web` を使用すること：
+
+```bash
+npm publish --auth-type=web
+```
+
 ## Testing
 
 Use `bun test` to run tests.
