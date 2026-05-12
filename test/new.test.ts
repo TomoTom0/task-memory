@@ -1,61 +1,82 @@
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
-import { createTestProject, cleanup, runTm } from './helpers/testProject';
+import { describe, it, expect, beforeEach } from 'bun:test';
+import { newCommand } from '../src/commands/new';
+import { loadTasks, saveTasks } from '../src/store';
+import type { Task } from '../src/types';
+import { join } from 'path';
+import { homedir } from 'os';
+import { existsSync } from 'fs';
 
-describe('tm new', () => {
-    let projectDir: string;
+// Helper to setup initial state
+function setupTasks(tasks: Task[]) {
+    saveTasks(tasks);
+}
 
-    beforeAll(() => {
-        projectDir = createTestProject();
-    });
-
-    afterAll(() => {
-        cleanup(projectDir);
+describe('tm new argument parsing', () => {
+    // Clear tasks before each test
+    beforeEach(() => {
+        saveTasks([]);
     });
 
     it('should create task with summary only', () => {
-        const result = runTm(['new', 'Simple', 'Task'], projectDir);
-        expect(result.exitCode).toBe(0);
-        expect(result.stdout).toContain('Simple Task');
-
-        const list = runTm(['list'], projectDir);
-        expect(list.stdout).toContain('Simple Task');
-        expect(list.stdout).toContain('todo');
+        newCommand(['Simple', 'Task']);
+        const tasks = loadTasks();
+        expect(tasks.length).toBe(1);
+        expect(tasks[0].summary).toBe('Simple Task');
+        expect(tasks[0].status).toBe('todo');
     });
 
-    it('should create task with --status option', () => {
-        const result = runTm(['new', 'Wip Task', '--status', 'wip'], projectDir);
-        expect(result.exitCode).toBe(0);
-
-        const list = runTm(['list', '-s', 'wip'], projectDir);
-        expect(list.stdout).toContain('Wip Task');
+    it('should create task with options', () => {
+        newCommand(['Task', 'With', 'Options', '--status', 'wip', '--body', 'Initial body', '--add-file', 'src/test.ts']);
+        const tasks = loadTasks();
+        expect(tasks.length).toBe(1);
+        expect(tasks[0].summary).toBe('Task With Options');
+        expect(tasks[0].status).toBe('wip');
+        expect(tasks[0].bodies.length).toBe(1);
+        expect(tasks[0].bodies[0].text).toBe('Initial body');
+        expect(tasks[0].files.edit).toContain('src/test.ts');
     });
 
-    it('should create task with --body option', () => {
-        const result = runTm(['new', 'Task With Body', '--body', 'Initial body'], projectDir);
-        expect(result.exitCode).toBe(0);
-
-        const taskId = result.stdout.match(/TASK-\d+/)?.[0];
-        expect(taskId).toBeTruthy();
-
-        const get = runTm(['get', taskId!], projectDir);
-        expect(get.stdout).toContain('Initial body');
+    it('should handle options before summary', () => {
+        newCommand(['--status', 'done', 'Task', 'Before']);
+        const tasks = loadTasks();
+        expect(tasks.length).toBe(1);
+        expect(tasks[0].summary).toBe('Task Before');
+        expect(tasks[0].status).toBe('done');
     });
 
-    it('should create task with --goal option', () => {
-        const result = runTm(['new', 'Goal Task', '--goal', 'Achieve something'], projectDir);
-        expect(result.exitCode).toBe(0);
-
-        const taskId = result.stdout.match(/TASK-\d+/)?.[0];
-        const get = runTm(['get', taskId!], projectDir);
-        expect(get.stdout).toContain('Achieve something');
+    it('should create task with goal', () => {
+        newCommand(['Task With Goal', '--goal', 'Complete this']);
+        const tasks = loadTasks();
+        expect(tasks.length).toBe(1);
+        expect(tasks[0].summary).toBe('Task With Goal');
+        expect(tasks[0].goal).toBe('Complete this');
     });
 
-    it('should create task with --order option', () => {
-        const result = runTm(['new', 'Ordered Task', '--order', '1'], projectDir);
-        expect(result.exitCode).toBe(0);
+    it('should create task with order', () => {
+        newCommand(['Task With Order', '--order', '1-2']);
+        const tasks = loadTasks();
+        expect(tasks.length).toBe(1);
+        expect(tasks[0].summary).toBe('Task With Order');
+        // 単一タスクで 1-2 は 1-1 に正規化される（1の子で唯一なので1番目）
+        expect(tasks[0].order).toBe('1-1');
+    });
 
-        const taskId = result.stdout.match(/TASK-\d+/)?.[0];
-        const get = runTm(['get', taskId!], projectDir);
-        expect(get.stdout).toContain('"order"');
+    it('should create task with decimal order (normalized)', () => {
+        newCommand(['Task 1', '--order', '1']);
+        newCommand(['Task 2', '--order', '3']);
+        newCommand(['Task 3', '--order', '5']);
+        const tasks = loadTasks();
+        expect(tasks.length).toBe(3);
+        // 正規化後: 1, 3, 5 -> 1, 2, 3
+        expect(tasks.find(t => t.summary === 'Task 1')?.order).toBe('1');
+        expect(tasks.find(t => t.summary === 'Task 2')?.order).toBe('2');
+        expect(tasks.find(t => t.summary === 'Task 3')?.order).toBe('3');
+    });
+
+    it('should set order to null for non-todo/wip status', () => {
+        newCommand(['Done Task', '--status', 'done', '--order', '1']);
+        const tasks = loadTasks();
+        expect(tasks.length).toBe(1);
+        expect(tasks[0].order).toBeNull();
     });
 });

@@ -1,26 +1,17 @@
-import { join, dirname } from 'path';
+import { join } from 'path';
 import { homedir } from 'os';
-import { existsSync, readFileSync, writeFileSync, statSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import type { Review, ReviewStore } from './types';
-import { findGitPath } from './store';
+import { findGitDir } from './store';
 
 export function getReviewDbPath(): string {
     if (process.env.REVIEW_MEMORY_PATH) {
         return process.env.REVIEW_MEMORY_PATH;
     }
 
-    const gitPath = findGitPath(process.cwd());
-    if (gitPath) {
-        let isGitDir = false;
-        try {
-            isGitDir = statSync(gitPath).isDirectory();
-        } catch { }
-
-        if (isGitDir) {
-            return join(gitPath, 'review-memory.json');
-        }
-        // .gitがファイル（worktree）の場合、プロジェクトルートに保存
-        return join(dirname(gitPath), 'review-memory.json');
+    const gitDir = findGitDir(process.cwd());
+    if (gitDir) {
+        return join(gitDir, 'review-memory.json');
     }
 
     return join(homedir(), '.review-memory.json');

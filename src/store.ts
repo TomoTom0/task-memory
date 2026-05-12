@@ -4,15 +4,20 @@ import { existsSync, readFileSync, writeFileSync, statSync } from 'fs';
 import type { Task, TaskStore, SyncConfig } from './types';
 import { normalizeOrders } from './utils/orderUtils';
 
-// .git（ファイル・ディレクトリ問わず）のパスを返す
-export function findGitPath(startDir: string): string | null {
+export function findGitDir(startDir: string): string | null {
     let currentDir = startDir;
     const home = homedir();
 
     while (true) {
-        const gitPath = join(currentDir, '.git');
-        if (existsSync(gitPath)) {
-            return gitPath;
+        const gitDir = join(currentDir, '.git');
+        if (existsSync(gitDir)) {
+            try {
+                if (statSync(gitDir).isDirectory()) {
+                    return gitDir;
+                }
+            } catch (e) {
+                // ignore
+            }
         }
 
         if (currentDir === home) {
@@ -32,37 +37,9 @@ export function getDbPath(): string {
         return resolve(process.cwd(), process.env.TASK_MEMORY_PATH);
     }
 
-    const gitPath = findGitPath(process.cwd());
-    if (gitPath) {
-        let isGitDir = false;
-        try {
-            isGitDir = statSync(gitPath).isDirectory();
-        } catch { }
-
-        // 優先度2: .git/task-memory.json（.git がディレクトリの場合）
-        if (isGitDir) {
-            const gitTaskMemory = join(gitPath, 'task-memory.json');
-            if (existsSync(gitTaskMemory)) {
-                return gitTaskMemory;
-            }
-        }
-
-        // 優先度3・4: .git と同じ階層の task-memory.json / .task-memory.json
-        const projectDir = dirname(gitPath);
-        const taskMemoryPath = join(projectDir, 'task-memory.json');
-        if (existsSync(taskMemoryPath)) {
-            return taskMemoryPath;
-        }
-        const hiddenPath = join(projectDir, '.task-memory.json');
-        if (existsSync(hiddenPath)) {
-            return hiddenPath;
-        }
-
-        // 優先度5: どの保存ファイルも存在しない場合のデフォルトパス
-        if (isGitDir) {
-            return join(gitPath, 'task-memory.json');
-        }
-        return taskMemoryPath;
+    const gitDir = findGitDir(process.cwd());
+    if (gitDir) {
+        return join(gitDir, 'task-memory.json');
     }
 
     return join(homedir(), '.task-memory.json');
@@ -126,37 +103,29 @@ function normalizeTaskOrders(tasks: Task[]): Task[] {
     const activeIndices: number[] = [];
     const activeOrders: (string | null)[] = [];
 
-    const activeTiebreakers: number[] = [];
-
     tasks.forEach((task, index) => {
         if (task.status === 'todo' || task.status === 'wip') {
             activeIndices.push(index);
             activeOrders.push(task.order ?? null);
-            // updated_at が新しいタスクを競合時に優先させる
-            activeTiebreakers.push(new Date(task.updated_at || 0).getTime());
         }
     });
 
     // 正規化
-    const normalizedOrders = normalizeOrders(activeOrders, activeTiebreakers);
+    const normalizedOrders = normalizeOrders(activeOrders);
 
     // 結果を反映
     const result = tasks.map((task, index) => {
         if (task.status === 'todo' || task.status === 'wip') {
             const activeIndex = activeIndices.indexOf(index);
             if (activeIndex !== -1) {
-                const newOrder = normalizedOrders[activeIndex];
-                if (task.order !== newOrder) {
-                    return { ...task, order: newOrder };
-                }
+                return { ...task, order: normalizedOrders[activeIndex] };
             }
-            return task;
-        } else {
-            if (task.order != null) {
-                return { ...task, order: null };
-            }
-            return task;
         }
+        // todo, wip 以外は order を null に
+        if (task.order !== null && task.order !== undefined) {
+            return { ...task, order: null };
+        }
+        return task;
     });
 
     return result;

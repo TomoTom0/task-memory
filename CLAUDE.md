@@ -18,24 +18,6 @@ Default to using Bun instead of Node.js.
 - Prefer `Bun.file` over `node:fs`'s readFile/writeFile
 - Bun.$`ls` instead of execa.
 
-## Build and Deploy
-
-ソースコードの変更完了後は必ず以下を実行すること：
-
-```bash
-bun run build
-```
-
-出力: `dist/tm`（実行可能バイナリ）
-
-## npm Publish
-
-npmパッケージとして公開する際は `--auth-type=web` を使用すること：
-
-```bash
-npm publish --auth-type=web
-```
-
 ## Testing
 
 Use `bun test` to run tests.
@@ -122,3 +104,10 @@ bun --hot ./index.ts
 ```
 
 For more information, read the Bun API docs in `node_modules/bun-types/docs/**.md`.
+
+## alcom
+
+- Changes made during a session should be undone with `alcom undo`, not committed with `alcom finish`. `alcom finish` consolidates all snapshots into a single commit, making individual changes unrecoverable. Only use `alcom finish` when the changes are intended to be kept as a final commit.
+- `git revert HEAD`以外に任意のコミットを指定できる。HEADに限定しないこと。
+- headにしか復元できるんですね。知りませんでした。勉強になります
+- 記載がないから更新が不要というのは非常に新鮮な意見だ

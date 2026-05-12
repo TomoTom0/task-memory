@@ -194,18 +194,6 @@ Options:
         displayReviews = checkingReviews.slice(reviewsToSkip);
     }
 
-    // Show pending/long counts when using default filter (todo/wip only)
-    if (!showAll && !showOpen && !filterStatus && !filterPriority && !filterVersion) {
-        const pendingCount = tasks.filter(t => t.status === 'pending').length;
-        const longCount = tasks.filter(t => t.status === 'long').length;
-        const hiddenCounts: string[] = [];
-        if (pendingCount > 0) hiddenCounts.push(`pending: ${pendingCount}`);
-        if (longCount > 0) hiddenCounts.push(`long: ${longCount}`);
-        if (hiddenCounts.length > 0) {
-            console.log(`(${hiddenCounts.join(', ')})`);
-        }
-    }
-
     if (displayTasks.length === 0 && displayReviews.length === 0) {
         return;
     }

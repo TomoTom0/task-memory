@@ -25,12 +25,9 @@ export interface Task {
 }
 
 export interface SyncConfig {
-    id: string;                      // プロジェクト識別子（同期リポジトリ内でのファイル名）
-    enabled: boolean;                // 同期が有効かどうか
-    auto: boolean;                   // 自動同期（タスク変更時に自動でpush）
-    encryptEnabled?: boolean;        // 暗号化が有効かどうか
-    encryptIdentityFile?: string;    // age identity ファイルパス（秘密鍵、復号用）
-    encryptRecipient?: string;       // age 公開鍵文字列（暗号化用）
+    id: string;           // プロジェクト識別子（同期リポジトリ内でのファイル名）
+    enabled: boolean;     // 同期が有効かどうか
+    auto: boolean;        // 自動同期（タスク変更時に自動でpush）
 }
 
 export interface TaskStore {
