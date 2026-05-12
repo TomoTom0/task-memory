@@ -4,20 +4,14 @@ import { existsSync, readFileSync, writeFileSync, statSync } from 'fs';
 import type { Task, TaskStore, SyncConfig } from './types';
 import { normalizeOrders } from './utils/orderUtils';
 
-export function findGitDir(startDir: string): string | null {
+export function findGitPath(startDir: string): string | null {
     let currentDir = startDir;
     const home = homedir();
 
     while (true) {
-        const gitDir = join(currentDir, '.git');
-        if (existsSync(gitDir)) {
-            try {
-                if (statSync(gitDir).isDirectory()) {
-                    return gitDir;
-                }
-            } catch (e) {
-                // ignore
-            }
+        const gitPath = join(currentDir, '.git');
+        if (existsSync(gitPath)) {
+            return gitPath;
         }
 
         if (currentDir === home) {
@@ -37,9 +31,15 @@ export function getDbPath(): string {
         return resolve(process.cwd(), process.env.TASK_MEMORY_PATH);
     }
 
-    const gitDir = findGitDir(process.cwd());
-    if (gitDir) {
-        return join(gitDir, 'task-memory.json');
+    const gitPath = findGitPath(process.cwd());
+    if (gitPath) {
+        try {
+            if (statSync(gitPath).isDirectory()) {
+                return join(gitPath, 'task-memory.json');
+            }
+        } catch { }
+        // .gitがファイル（worktree）の場合、プロジェクトルートに保存
+        return join(dirname(gitPath), 'task-memory.json');
     }
 
     return join(homedir(), '.task-memory.json');

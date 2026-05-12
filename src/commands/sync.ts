@@ -1,4 +1,4 @@
-import { loadSyncConfig, saveSyncConfig, loadStore, saveStore } from '../store';
+import { loadSyncConfig, saveSyncConfig, loadStore, saveStore, getNextId } from '../store';
 import {
     initSyncRepo,
     isSyncInitialized,
@@ -7,8 +7,10 @@ import {
     listSyncedProjects,
     generateSyncId,
     getSyncDir,
+    runGitCommand,
 } from '../syncStore';
-import type { SyncConfig } from '../types';
+import { spawnSync } from 'child_process';
+import type { SyncConfig, Task } from '../types';
 
 function parseArgs(args: string[]): { subcommand: string; options: Record<string, string | boolean>; positional: string[] } {
     const subcommand = args[0] || '';
@@ -113,11 +115,17 @@ function handlePush(): void {
         process.exit(1);
     }
 
+    // save
+    const store = loadStore();
+    if (!saveToSync(syncConfig.id, store)) {
+        process.exit(1);
+    }
+    console.log(`Saved. (id: ${syncConfig.id})`);
+
     // git add
     runGitCommand(['add', '.']);
 
     // git commit
-    const { spawnSync } = require('child_process');
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');
     const defaultMessage = `sync: ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
@@ -140,11 +148,8 @@ function handlePush(): void {
     }
 
     // git push
-    const pushResult = spawnSync('git', ['push', '--set-upstream', 'origin', 'HEAD'], {
-        cwd: getSyncDir(),
-        stdio: 'inherit',
-    });
-    if (pushResult.status !== 0) {
+    const pushStatus = runGitCommand(['push', '--set-upstream', 'origin', 'HEAD']);
+    if (pushStatus !== 0) {
         console.error('Failed to push.');
         process.exit(1);
     }
@@ -166,22 +171,39 @@ function handlePull(options: Record<string, string | boolean>): void {
     const merge = options.merge === true;
 
     if (merge) {
-        // マージモード: 両方のタスクを統合（IDが重複する場合は更新日時が新しい方を採用）
+        // マージモード: 両方のタスクを統合（IDが重複する場合は作成日時を確認して衝突を解決）
         const mergedTasks = [...currentStore.tasks];
+        let idCollisions = 0;
+        let conflictsResolved = 0;
+
         for (const remoteTask of remoteStore.tasks) {
-            const existingIndex = mergedTasks.findIndex(t => t.id === remoteTask.id);
-            if (existingIndex >= 0) {
-                const existing = mergedTasks[existingIndex];
+            const sameTaskIndex = mergedTasks.findIndex(
+                t => t.id === remoteTask.id && t.created_at === remoteTask.created_at
+            );
+
+            if (sameTaskIndex >= 0) {
+                const existing = mergedTasks[sameTaskIndex];
                 if (existing && new Date(remoteTask.updated_at) > new Date(existing.updated_at)) {
-                    mergedTasks[existingIndex] = remoteTask;
+                    mergedTasks[sameTaskIndex] = remoteTask;
+                    conflictsResolved++;
                 }
             } else {
-                mergedTasks.push(remoteTask);
+                const hasIdCollision = mergedTasks.some(t => t.id === remoteTask.id);
+                if (hasIdCollision) {
+                    const newId = getNextId(mergedTasks);
+                    mergedTasks.push({ ...remoteTask, id: newId });
+                    idCollisions++;
+                } else {
+                    mergedTasks.push(remoteTask);
+                }
             }
         }
         currentStore.tasks = mergedTasks;
         saveStore(currentStore);
-        console.log(`Merged from sync repository. (${remoteStore.tasks.length} tasks)`);
+        let msg = `Merged from sync repository. (${remoteStore.tasks.length} tasks)`;
+        if (idCollisions > 0) msg += ` ID collisions resolved: ${idCollisions}.`;
+        if (conflictsResolved > 0) msg += ` Conflicts resolved: ${conflictsResolved}.`;
+        console.log(msg);
     } else {
         // 上書きモード
         currentStore.tasks = remoteStore.tasks;

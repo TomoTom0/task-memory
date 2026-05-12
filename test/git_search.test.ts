@@ -1,5 +1,5 @@
 import { describe, it, expect, mock, beforeAll, afterAll } from 'bun:test';
-import { findGitDir } from '../src/store';
+import { findGitPath } from '../src/store';
 import { join } from 'path';
 import { mkdirSync, rmdirSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
@@ -8,7 +8,7 @@ import { homedir } from 'os';
 // Bun test mocking of os module might be tricky, but let's try to verify logic by structure.
 // If we can't mock homedir easily, we can rely on the fact that we are running in a specific environment.
 // But we can verify the logic by creating a fake root structure in a temp dir and pretending one of them is home?
-// No, findGitDir calls real homedir().
+// No, findGitPath calls real homedir().
 
 // Let's try to mock os.homedir
 mock.module('os', () => {
@@ -17,7 +17,7 @@ mock.module('os', () => {
     };
 });
 
-describe('findGitDir', () => {
+describe('findGitPath', () => {
     const root = '/tmp/fake-home';
     const project = join(root, 'project');
     const subdir = join(project, 'subdir');
@@ -42,12 +42,12 @@ describe('findGitDir', () => {
     });
 
     it('should find .git in current directory', () => {
-        const result = findGitDir(project);
+        const result = findGitPath(project);
         expect(result).toBe(join(project, '.git'));
     });
 
     it('should find .git in parent directory', () => {
-        const result = findGitDir(subdir);
+        const result = findGitPath(subdir);
         expect(result).toBe(join(project, '.git'));
     });
 
@@ -58,7 +58,7 @@ describe('findGitDir', () => {
         // Ensure home has no .git
         // (We didn't create it)
 
-        const result = findGitDir(root);
+        const result = findGitPath(root);
         expect(result).toBeNull();
     });
 
@@ -66,7 +66,7 @@ describe('findGitDir', () => {
         const homeGit = join(root, '.git');
         try { mkdirSync(homeGit, { recursive: true }); } catch { }
 
-        const result = findGitDir(root);
+        const result = findGitPath(root);
         expect(result).toBe(homeGit);
 
         // Cleanup
