@@ -8,6 +8,13 @@ import { existsSync, mkdirSync, rmSync } from 'fs';
 import { createTempProject, removeTempDir } from './helpers';
 
 describe('syncStore', () => {
+    afterEach(() => {
+        for (const id of ['test-project']) {
+            const filePath = join(getSyncDir(), 'projects', `${id}.json`);
+            if (existsSync(filePath)) rmSync(filePath);
+        }
+    });
+
     describe('saveToSync', () => {
         it('should save store data to sync directory', () => {
             initSyncRepo();
@@ -75,6 +82,10 @@ describe('syncCommand', () => {
     afterEach(() => {
         process.chdir(originalCwd);
         removeTempDir(tempDir);
+        for (const id of ['test-project', 'new-project']) {
+            const filePath = join(getSyncDir(), 'projects', `${id}.json`);
+            if (existsSync(filePath)) rmSync(filePath);
+        }
     });
 
     describe('save', () => {
