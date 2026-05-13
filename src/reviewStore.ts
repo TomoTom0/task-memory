@@ -5,10 +5,6 @@ import type { Review, ReviewStore } from './types';
 import { findGitPath } from './store';
 
 export function getReviewDbPath(): string {
-    if (process.env.REVIEW_MEMORY_PATH) {
-        return process.env.REVIEW_MEMORY_PATH;
-    }
-
     const gitPath = findGitPath(process.cwd());
     if (gitPath) {
         try {
@@ -23,14 +19,13 @@ export function getReviewDbPath(): string {
     return join(homedir(), '.review-memory.json');
 }
 
-const DB_PATH = getReviewDbPath();
-
 export function loadReviews(): Review[] {
-    if (!existsSync(DB_PATH)) {
+    const dbPath = getReviewDbPath();
+    if (!existsSync(dbPath)) {
         return [];
     }
     try {
-        const data = readFileSync(DB_PATH, 'utf-8');
+        const data = readFileSync(dbPath, 'utf-8');
         const store: ReviewStore = JSON.parse(data);
 
         if (Array.isArray(store)) {
@@ -38,16 +33,17 @@ export function loadReviews(): Review[] {
         }
         return (store as any).reviews || [];
     } catch (e) {
-        console.error(`Error loading reviews from ${DB_PATH}:`, e);
+        console.error(`Error loading reviews from ${dbPath}:`, e);
         return [];
     }
 }
 
 export function saveReviews(reviews: Review[]): void {
+    const dbPath = getReviewDbPath();
     try {
-        writeFileSync(DB_PATH, JSON.stringify(reviews, null, 2), 'utf-8');
+        writeFileSync(dbPath, JSON.stringify(reviews, null, 2), 'utf-8');
     } catch (e) {
-        console.error(`Error saving reviews to ${DB_PATH}:`, e);
+        console.error(`Error saving reviews to ${dbPath}:`, e);
     }
 }
 
