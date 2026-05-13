@@ -12,9 +12,6 @@ import { syncCommand } from './commands/sync';
 import { gitCommand } from './commands/git';
 import { setAfterSaveCallback } from './store';
 import { tryAutoSync } from './syncStore';
-import usageDocs from '../docs/usage/index.md' with { type: 'text' };
-import agentClaudeMdDocs from '../docs/usage/agent-claude-md.md' with { type: 'text' };
-import agentGuideDocs from '../docs/usage/agent-guide.md' with { type: 'text' };
 
 // 自動同期コールバックを設定
 setAfterSaveCallback((store) => {
@@ -68,23 +65,6 @@ switch (command) {
   case 'git':
     gitCommand(commandArgs);
     break;
-  case 'docs': {
-    const docMap: Record<string, string> = {
-      'usage': usageDocs,
-      'agent-claude-md': agentClaudeMdDocs,
-      'agent-guide': agentGuideDocs,
-    };
-    const docPage = commandArgs[0] || 'usage';
-
-    if (docMap[docPage]) {
-      console.log(docMap[docPage]);
-    } else {
-      console.error(`Error: Unknown docs page '${docPage}'.`);
-      console.error(`Available pages: usage (default), ${Object.keys(docMap).filter(k => k !== 'usage').join(', ')}`);
-      process.exit(1);
-    }
-    break;
-  }
   case 'help':
   case '--help':
   case '-h':
@@ -153,9 +133,6 @@ Commands:
 
   git <git-command> [args]
     Run git commands in ~/.local/task-memory/ repository.
-
-  docs [page]
-    Show documentation. Pages: usage (default), agent-claude-md, agent-guide
 
 Examples:
   tm new "Refactor auth" --status wip --body "Starting now" --priority high

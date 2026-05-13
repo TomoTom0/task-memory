@@ -11,14 +11,11 @@ export function getReviewDbPath(): string {
 
     const gitPath = findGitPath(process.cwd());
     if (gitPath) {
-        let isGitDir = false;
         try {
-            isGitDir = statSync(gitPath).isDirectory();
+            if (statSync(gitPath).isDirectory()) {
+                return join(gitPath, 'review-memory.json');
+            }
         } catch { }
-
-        if (isGitDir) {
-            return join(gitPath, 'review-memory.json');
-        }
         // .gitがファイル（worktree）の場合、プロジェクトルートに保存
         return join(dirname(gitPath), 'review-memory.json');
     }

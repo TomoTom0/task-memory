@@ -147,38 +147,6 @@ describe("normalizeOrders", () => {
         expect(result).toEqual(["1"]);
     });
 
-    test("重複する order は連番に振り直される", () => {
-        // 入力: ["1", "1", "3"] → 出力: ["1", "2", "3"]
-        const input = ["1", "1", "3"];
-        const result = normalizeOrders(input);
-        expect(result).toEqual(["1", "2", "3"]);
-    });
-
-    test("すべて同じ order の場合も連番になる", () => {
-        const input = ["2", "2", "2"];
-        const result = normalizeOrders(input);
-        expect(result).toEqual(["1", "2", "3"]);
-    });
-
-    test("tiebreaker: 同じ order 値では tiebreaker が大きい方が優先（小さい番号を得る）", () => {
-        // index 0 (tiebreaker=100), index 1 (tiebreaker=200) の両方が order="1"
-        // tiebreaker が大きい index 1 が優先 → index 1 が "1"、index 0 が "2"
-        const input = ["1", "1"];
-        const tiebreakers = [100, 200];
-        const result = normalizeOrders(input, tiebreakers);
-        expect(result).toEqual(["2", "1"]);
-    });
-
-    test("tiebreaker: 既存 order=1 に新規 order=1 を設定すると新規が優先", () => {
-        // index 0 が既存（tiebreaker 小）、index 1 が新規（tiebreaker 大）
-        const now = Date.now();
-        const input = ["1", "1", "2"];
-        const tiebreakers = [now - 1000, now, now - 500]; // index 1 が最新
-        const result = normalizeOrders(input, tiebreakers);
-        // index 1 (新規, tiebreaker最大) → "1", index 0 (既存) → "2", index 2 → "3"
-        expect(result).toEqual(["2", "1", "3"]);
-    });
-
     test("複雑なケース: 複数レベルの欠番", () => {
         // 入力: 2, 2-3, 2-3-5, 4
         // 出力: 1, 1-1, 1-1-1, 2

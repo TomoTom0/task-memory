@@ -1,6 +1,6 @@
 {
   "name": "task-memory",
-  "version": "0.3.0",
+  "version": "0.1.0",
   "description": "A CLI tool for managing tasks with persistent memory, designed for AI-assisted development workflows",
   "type": "module",
   "license": "MIT",
@@ -19,16 +19,14 @@
     "claude"
   ],
   "bin": {
-    "tm": "dist/index.js"
+    "tm": "dist/tm"
   },
   "files": [
-    "dist/index.js"
+    "dist"
   ],
   "scripts": {
-    "build:js": "bun build src/index.ts --outfile=dist/index.js --target=node && chmod +x dist/index.js",
-    "build:bin": "bun build src/index.ts --outfile=dist/tm --compile",
-    "build": "bun run build:js && bun run build:bin",
-    "prepublishOnly": "bun run build:js"
+    "build": "bun build src/index.ts --outfile=dist/tm --compile",
+    "prepublishOnly": "npm run build"
   },
   "engines": {
     "node": ">=18"

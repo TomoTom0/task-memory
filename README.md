@@ -10,12 +10,6 @@ AIエージェント（および人間）がタスクの状態とコンテキス
 
 ## インストール
 
-### npmでインストール（推奨）
-
-```bash
-npm install -g task-memory
-```
-
 ### ローカルインストール
 
 ```bash
@@ -37,23 +31,6 @@ bun link
 ```bash
 tm new "Refactor auth" --status wip --body "Starting now" --priority high --goal "Complete by Friday"
 ```
-
-**進行順序の設定:**
-```bash
-# 基本的な順序
-tm new "Task 1" --order 1
-tm new "Task 2" --order 2
-
-# 階層的な順序（親子関係）
-tm new "Parent Task" --order 1
-tm new "Child Task 1" --order 1-1
-tm new "Child Task 2" --order 1-2
-tm new "Grandchild Task" --order 1-2-1
-
-# 小数での挿入（保存時に自動正規化）
-tm new "Insert Task" --order 1.5
-```
-
 Aliases: `tm n` (not yet impl), `tm new`
 
 ### List Tasks
@@ -90,11 +67,6 @@ tm list --released      # リリース済み（version が tbd 以外）のタ�
 tm list --head 5        # 最初の5件
 tm list --tail 10       # 最後の10件
 tm list --head          # 最初の10件（デフォルト）
-
-# ソート順の指定
-tm list --sort order    # 進行順序でソート（デフォルト）
-tm list --sort id       # タスクID順
-tm list --sort created  # 作成日時順
 ```
 
 ### Update a Task
@@ -114,16 +86,6 @@ Update version:
 tm update 1 --version 1.0.0
 # or
 tm u 1 -v 1.0.0
-```
-
-Update order:
-```bash
-tm update 1 --order 1-2
-# or
-tm u 1 -o 1-2
-
-# order を解除
-tm update 1 --order null
 ```
 
 ### Get Task Details
@@ -153,6 +115,28 @@ Subcommands: `new`, `list`, `get`, `update`, `return`, `accept`, `reject`.
 ### Environment
 ```bash
 tm env
+```
+
+### Sync
+```bash
+# プロジェクトをsyncに追加
+tm sync add --id my-project --save
+
+# ローカルに保存
+tm sync save
+
+# リモートにpush
+tm sync push
+
+# リモートから取得
+tm sync pull --merge
+```
+
+### Git (sync repository)
+```bash
+tm git status
+tm git remote add origin <url>
+tm git push
 ```
 
 ## 開発
