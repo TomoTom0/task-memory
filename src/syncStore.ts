@@ -1,4 +1,4 @@
-import { join } from 'path';
+import { join, basename } from 'path';
 import { homedir } from 'os';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, readdirSync } from 'fs';
 import { spawnSync } from 'child_process';
@@ -139,30 +139,52 @@ export function listSyncedProjects(): string[] {
         .map((f: string) => f.replace(/\.json$/, ''));
 }
 
-export function runGitCommand(args: string[]): number {
+export function runGitCommand(args: string[], captureOutput = false): number {
     if (!isSyncInitialized()) {
         console.error('Sync repository not initialized. Run "tm sync add" first.');
         return 1;
     }
 
-    const result = spawnSync('git', args, { cwd: SYNC_DIR, stdio: 'inherit' });
+    const stdio = captureOutput ? 'pipe' : 'inherit';
+    const result = spawnSync('git', args, { cwd: SYNC_DIR, encoding: captureOutput ? 'utf-8' : undefined, stdio });
     return result.status ?? 1;
 }
 
+export function runGitCommandCapture(args: string[]): { status: number; stdout: string; stderr: string } {
+    if (!isSyncInitialized()) {
+        console.error('Sync repository not initialized. Run "tm sync add" first.');
+        return { status: 1, stdout: '', stderr: 'Sync repository not initialized' };
+    }
+
+    const result = spawnSync('git', args, { cwd: SYNC_DIR, encoding: 'utf-8', stdio: 'pipe' });
+    return {
+        status: result.status ?? 1,
+        stdout: result.stdout ?? '',
+        stderr: result.stderr ?? '',
+    };
+}
+
 export function generateSyncId(): string {
-    // カレントディレクトリのgitリポジトリ名を使用
-    const result = spawnSync('git', ['rev-parse', '--show-toplevel'], {
+    const originResult = spawnSync('git', ['remote', 'get-url', 'origin'], {
         cwd: process.cwd(),
         encoding: 'utf-8'
     });
 
-    if (result.status === 0 && result.stdout) {
-        const repoPath = result.stdout.trim();
-        const repoName = repoPath.split('/').pop() || 'unknown';
-        return repoName;
+    if (originResult.status === 0 && originResult.stdout) {
+        const url = originResult.stdout.trim();
+        // Extract "owner/repo" from HTTPS or SSH remote URLs
+        const match = url.match(/[:/]([^/]+\/[^/]+?)(?:\.git)?$/);
+        if (match?.[1]) return match[1].replace('/', '-');
     }
 
-    // gitリポジトリでない場合はディレクトリ名を使用
-    const dirName = process.cwd().split('/').pop() || 'unknown';
-    return dirName;
+    const toplevelResult = spawnSync('git', ['rev-parse', '--show-toplevel'], {
+        cwd: process.cwd(),
+        encoding: 'utf-8'
+    });
+
+    if (toplevelResult.status === 0 && toplevelResult.stdout) {
+        return basename(toplevelResult.stdout.trim()) || 'unknown';
+    }
+
+    return basename(process.cwd()) || 'unknown';
 }

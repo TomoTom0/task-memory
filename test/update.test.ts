@@ -1,39 +1,27 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { updateCommand } from '../src/commands/update';
 import { saveTasks, loadTasks } from '../src/store';
 import type { Task } from '../src/types';
-import { join } from 'path';
-import { homedir } from 'os';
-import { unlinkSync, existsSync } from 'fs';
+import { createTempProject, removeTempDir } from './helpers';
 
-// Mock store by overwriting the file
-const DB_PATH = join(homedir(), '.task-memory.json');
-const BACKUP_PATH = join(homedir(), '.task-memory.json.bak');
-
-// Helper to setup initial state
 function setupTasks(tasks: Task[]) {
     saveTasks(tasks);
 }
 
 describe('tm update argument parsing', () => {
-    // Backup existing DB if any
+    let originalCwd: string;
+    let tempDir: string;
+
     beforeEach(() => {
-        if (existsSync(DB_PATH)) {
-            const data = loadTasks();
-            // We can't easily backup to file without fs write, but saveTasks writes to DB_PATH.
-            // Let's just rename it.
-            // Actually, let's just use a mock store if possible, but the code imports store directly.
-            // Integration test style is fine for this tool.
-            // We will backup the file content in memory or rename.
-            // Bun doesn't have renameSync exposed easily? It does in 'fs'.
-            // Let's just overwrite and restore.
-        }
+        originalCwd = process.cwd();
+        tempDir = createTempProject();
+        process.chdir(tempDir);
     });
 
-    // We need to restore, but for now let's just assume we are in a dev env or use a separate file?
-    // The code uses hardcoded path.
-    // Ideally we should have made the path configurable.
-    // For this task, I'll just overwrite and hope the user doesn't have critical data in ~/.task-memory.json yet (since I just created it).
+    afterEach(() => {
+        process.chdir(originalCwd);
+        removeTempDir(tempDir);
+    });
 
     it('should update single task', () => {
         setupTasks([{

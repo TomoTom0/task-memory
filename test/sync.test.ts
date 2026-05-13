@@ -1,17 +1,20 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { syncCommand } from '../src/commands/sync';
 import { saveToSync, pullFromSync, initSyncRepo, getSyncDir, generateSyncId } from '../src/syncStore';
 import { loadStore, saveStore } from '../src/store';
-import type { TaskStore, SyncConfig } from '../src/types';
+import type { TaskStore } from '../src/types';
 import { join } from 'path';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
-import { homedir } from 'os';
-import { spawnSync } from 'child_process';
-
-const SYNC_DIR = join(homedir(), '.local', 'task-memory');
-const PROJECTS_DIR = join(SYNC_DIR, 'projects');
+import { existsSync, mkdirSync, rmSync } from 'fs';
+import { createTempProject, removeTempDir } from './helpers';
 
 describe('syncStore', () => {
+    afterEach(() => {
+        for (const id of ['test-project']) {
+            const filePath = join(getSyncDir(), 'projects', `${id}.json`);
+            if (existsSync(filePath)) rmSync(filePath);
+        }
+    });
+
     describe('saveToSync', () => {
         it('should save store data to sync directory', () => {
             initSyncRepo();
@@ -19,16 +22,13 @@ describe('syncStore', () => {
             const result = saveToSync('test-project', store);
             expect(result).toBe(true);
 
-            const filePath = join(PROJECTS_DIR, 'test-project.json');
+            const filePath = join(getSyncDir(), 'projects', 'test-project.json');
             expect(existsSync(filePath)).toBe(true);
         });
 
         it('should return false when sync not initialized', () => {
             const store: TaskStore = { tasks: [] };
-            // Use a non-existent directory to simulate uninitialized state
             const result = saveToSync('test-project', store);
-            // If sync IS initialized (common in real env), it will succeed
-            // The important thing is the function doesn't throw
             expect(typeof result).toBe('boolean');
         });
     });
@@ -60,8 +60,13 @@ describe('syncStore', () => {
 });
 
 describe('syncCommand', () => {
+    let originalCwd: string;
+    let tempDir: string;
+
     beforeEach(() => {
-        // Ensure clean state with a sync config
+        originalCwd = process.cwd();
+        tempDir = createTempProject();
+        process.chdir(tempDir);
         const store: TaskStore = {
             tasks: [],
             sync: {
@@ -74,17 +79,25 @@ describe('syncCommand', () => {
         initSyncRepo();
     });
 
+    afterEach(() => {
+        process.chdir(originalCwd);
+        removeTempDir(tempDir);
+        for (const id of ['test-project', 'new-project']) {
+            const filePath = join(getSyncDir(), 'projects', `${id}.json`);
+            if (existsSync(filePath)) rmSync(filePath);
+        }
+    });
+
     describe('save', () => {
         it('should save tasks to sync directory', () => {
             syncCommand(['save']);
 
-            const filePath = join(PROJECTS_DIR, 'test-project.json');
+            const filePath = join(getSyncDir(), 'projects', 'test-project.json');
             expect(existsSync(filePath)).toBe(true);
         });
 
         it('should fail when not synced', () => {
             saveStore({ tasks: [] });
-            // This should exit with error
             const origExit = process.exit;
             let exitCode = 0;
             process.exit = ((code: number) => { exitCode = code; throw new Error('exit'); }) as never;
@@ -110,7 +123,6 @@ describe('syncCommand', () => {
         });
 
         it('should report already synced', () => {
-            // Already synced from beforeEach
             const logs: string[] = [];
             const origLog = console.log;
             console.log = (...args: unknown[]) => logs.push(args.join(' '));
@@ -127,6 +139,34 @@ describe('syncCommand', () => {
             syncCommand(['remove']);
             const store = loadStore();
             expect(store.sync!.enabled).toBe(false);
+        });
+    });
+
+    describe('set', () => {
+        it('should update sync id', () => {
+            syncCommand(['set', '--id', 'renamed-project']);
+            const store = loadStore();
+            expect(store.sync!.id).toBe('renamed-project');
+        });
+
+        it('should set auto mode', () => {
+            syncCommand(['set', 'auto']);
+            const store = loadStore();
+            expect(store.sync!.auto).toBe(true);
+        });
+
+        it('should set manual mode', () => {
+            syncCommand(['set', 'auto']);
+            syncCommand(['set', 'manual']);
+            const store = loadStore();
+            expect(store.sync!.auto).toBe(false);
+        });
+
+        it('should update id and mode together', () => {
+            syncCommand(['set', '--id', 'new-id', 'auto']);
+            const store = loadStore();
+            expect(store.sync!.id).toBe('new-id');
+            expect(store.sync!.auto).toBe(true);
         });
     });
 

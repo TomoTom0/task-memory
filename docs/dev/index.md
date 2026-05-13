@@ -4,12 +4,13 @@
 
 ## 環境構築
 
-- **Runtime**: Bun (v1.0以上推奨)
+- **Runtime**: Node.js (v18以上)
+- **Package Manager**: pnpm
 - **Language**: TypeScript
 
 ```bash
 # 依存関係のインストール
-bun install
+pnpm install
 ```
 
 ## プロジェクト構成
@@ -26,11 +27,19 @@ docs/          # ドキュメント
 
 ## テストの実行
 
-`bun:test` を使用しています。
+vitest を使用しています。
 
 ```bash
-bun test
+pnpm test
 ```
+
+## ビルド
+
+```bash
+pnpm build
+```
+
+`tsup` によって `dist/index.js` が生成されます。
 
 ## 設計思想
 

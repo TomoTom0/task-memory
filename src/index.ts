@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { newCommand } from './commands/new';
 import { listCommand } from './commands/list';
 import { getCommand } from './commands/get';

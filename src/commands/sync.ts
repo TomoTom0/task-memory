@@ -8,8 +8,8 @@ import {
     generateSyncId,
     getSyncDir,
     runGitCommand,
+    runGitCommandCapture,
 } from '../syncStore';
-import { spawnSync } from 'child_process';
 import type { SyncConfig, Task } from '../types';
 
 function parseArgs(args: string[]): { subcommand: string; options: Record<string, string | boolean>; positional: string[] } {
@@ -130,13 +130,9 @@ function handlePush(): void {
     const pad = (n: number) => String(n).padStart(2, '0');
     const defaultMessage = `sync: ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
 
-    const commitResult = spawnSync('git', ['commit', '-m', defaultMessage], {
-        cwd: getSyncDir(),
-        encoding: 'utf-8',
-        stdio: 'pipe',
-    });
+    const commitResult = runGitCommandCapture(['commit', '-m', defaultMessage]);
     if (commitResult.status !== 0) {
-        if (commitResult.stdout?.includes('nothing to commit')) {
+        if (commitResult.stdout.includes('nothing to commit')) {
             console.log('Nothing to commit.');
         } else {
             console.error('Failed to commit.');
@@ -160,6 +156,12 @@ function handlePull(options: Record<string, string | boolean>): void {
     if (!syncConfig?.enabled) {
         console.error('Not synced. Run "tm sync add" first.');
         process.exit(1);
+    }
+
+    // リモートの変更を取得
+    const pullStatus = runGitCommand(['pull', '--rebase']);
+    if (pullStatus !== 0) {
+        console.error('Warning: git pull failed. Using local data.');
     }
 
     const remoteStore = pullFromSync(syncConfig.id);
@@ -212,22 +214,37 @@ function handlePull(options: Record<string, string | boolean>): void {
     }
 }
 
-function handleSet(positional: string[]): void {
-    const mode = positional[0];
-    if (mode !== 'auto' && mode !== 'manual') {
-        console.error('Usage: tm sync set <auto|manual>');
-        process.exit(1);
-    }
-
+function handleSet(positional: string[], options: Record<string, string | boolean>): void {
     const syncConfig = loadSyncConfig();
     if (!syncConfig?.enabled) {
         console.error('Not synced. Run "tm sync add" first.');
         process.exit(1);
     }
 
-    syncConfig.auto = mode === 'auto';
+    let changed = false;
+
+    if (typeof options.id === 'string') {
+        syncConfig.id = options.id;
+        changed = true;
+        console.log(`Sync ID set to: ${options.id}`);
+    }
+
+    const mode = positional[0];
+    if (mode === 'auto' || mode === 'manual') {
+        syncConfig.auto = mode === 'auto';
+        changed = true;
+        console.log(`Sync mode set to: ${mode}`);
+    } else if (mode !== undefined) {
+        console.error('Usage: tm sync set [--id <name>] [auto|manual]');
+        process.exit(1);
+    }
+
+    if (!changed) {
+        console.error('Usage: tm sync set [--id <name>] [auto|manual]');
+        process.exit(1);
+    }
+
     saveSyncConfig(syncConfig);
-    console.log(`Sync mode set to: ${mode}`);
 }
 
 function handleStatus(): void {
@@ -281,7 +298,8 @@ Subcommands:
   save                    Save tasks to sync directory
   push                    Push sync directory to remote
   pull [--merge]          Pull tasks from sync repository
-  set <auto|manual>       Set sync mode
+  set [--id <name>] [auto|manual]
+                          Set sync ID and/or mode
   status                  Show sync status
   list                    List synced projects
 
@@ -315,7 +333,7 @@ export function syncCommand(args: string[]): void {
             handlePull(options);
             break;
         case 'set':
-            handleSet(positional);
+            handleSet(positional, options);
             break;
         case 'status':
             handleStatus();
