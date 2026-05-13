@@ -1,17 +1,27 @@
-import { describe, it, expect, beforeEach, spyOn } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, spyOn } from 'bun:test';
 import { listCommand } from '../src/commands/list';
 import { saveTasks } from '../src/store';
 import { saveReviews } from '../src/reviewStore';
 import type { Task, Review } from '../src/types';
+import { createTempProject, removeTempDir } from './helpers';
 
 describe('tm list command', () => {
-    // Mock console.log
     const logSpy = spyOn(console, 'log');
+    let originalCwd: string;
+    let tempDir: string;
 
     beforeEach(() => {
+        originalCwd = process.cwd();
+        tempDir = createTempProject();
+        process.chdir(tempDir);
         logSpy.mockClear();
         saveTasks([]);
         saveReviews([]);
+    });
+
+    afterEach(() => {
+        process.chdir(originalCwd);
+        removeTempDir(tempDir);
     });
 
     it('should list only todo and wip tasks by default', () => {

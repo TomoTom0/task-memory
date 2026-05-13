@@ -1,4 +1,4 @@
-import { join, resolve, dirname } from 'path';
+import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { existsSync, readFileSync, writeFileSync, statSync } from 'fs';
 import type { Task, TaskStore, SyncConfig } from './types';
@@ -27,10 +27,6 @@ export function findGitPath(startDir: string): string | null {
 }
 
 export function getDbPath(): string {
-    if (process.env.TASK_MEMORY_PATH) {
-        return resolve(process.cwd(), process.env.TASK_MEMORY_PATH);
-    }
-
     const gitPath = findGitPath(process.cwd());
     if (gitPath) {
         try {
@@ -45,8 +41,6 @@ export function getDbPath(): string {
     return join(homedir(), '.task-memory.json');
 }
 
-const DB_PATH = getDbPath();
-
 // 内部キャッシュ（sync設定を保持するため）
 let cachedStore: TaskStore | null = null;
 
@@ -58,11 +52,12 @@ export function setAfterSaveCallback(callback: (store: TaskStore) => void): void
 }
 
 export function loadStore(): TaskStore {
-    if (!existsSync(DB_PATH)) {
+    const dbPath = getDbPath();
+    if (!existsSync(dbPath)) {
         return { tasks: [] };
     }
     try {
-        const data = readFileSync(DB_PATH, 'utf-8');
+        const data = readFileSync(dbPath, 'utf-8');
         const parsed = JSON.parse(data);
 
         // 旧形式（配列）との互換性を維持
@@ -71,20 +66,21 @@ export function loadStore(): TaskStore {
         }
         return parsed as TaskStore;
     } catch (e) {
-        console.error(`Error loading store from ${DB_PATH}:`, e);
+        console.error(`Error loading store from ${dbPath}:`, e);
         return { tasks: [] };
     }
 }
 
 export function saveStore(store: TaskStore): void {
+    const dbPath = getDbPath();
     try {
-        writeFileSync(DB_PATH, JSON.stringify(store, null, 2), 'utf-8');
+        writeFileSync(dbPath, JSON.stringify(store, null, 2), 'utf-8');
         cachedStore = store;
         if (afterSaveCallback) {
             afterSaveCallback(store);
         }
     } catch (e) {
-        console.error(`Error saving store to ${DB_PATH}:`, e);
+        console.error(`Error saving store to ${dbPath}:`, e);
     }
 }
 

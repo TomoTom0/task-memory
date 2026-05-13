@@ -1,20 +1,27 @@
-import { describe, it, expect, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { newCommand } from '../src/commands/new';
 import { loadTasks, saveTasks } from '../src/store';
 import type { Task } from '../src/types';
-import { join } from 'path';
-import { homedir } from 'os';
-import { existsSync } from 'fs';
+import { createTempProject, removeTempDir } from './helpers';
 
-// Helper to setup initial state
 function setupTasks(tasks: Task[]) {
     saveTasks(tasks);
 }
 
 describe('tm new argument parsing', () => {
-    // Clear tasks before each test
+    let originalCwd: string;
+    let tempDir: string;
+
     beforeEach(() => {
+        originalCwd = process.cwd();
+        tempDir = createTempProject();
+        process.chdir(tempDir);
         saveTasks([]);
+    });
+
+    afterEach(() => {
+        process.chdir(originalCwd);
+        removeTempDir(tempDir);
     });
 
     it('should create task with summary only', () => {
