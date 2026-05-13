@@ -5,6 +5,7 @@ export interface TaskBuildOptions {
     status?: TaskStatus;
     priority?: string;
     goal?: string;
+    order?: string | null;
     bodies?: string[];
     addFiles?: string[];
     readFiles?: string[];
@@ -21,6 +22,7 @@ export function parseTaskArgs(args: string[]): TaskBuildOptions {
     let status: TaskStatus = 'todo';
     let priority: string | undefined;
     let goal: string | undefined;
+    let order: string | null | undefined;
     const bodies: string[] = [];
     const addFiles: string[] = [];
     const readFiles: string[] = [];
@@ -62,6 +64,16 @@ export function parseTaskArgs(args: string[]): TaskBuildOptions {
                         i++;
                     } else {
                         throw new Error('--priority requires a value.');
+                    }
+                    break;
+                case '--order':
+                case '-o':
+                    const o = args[i + 1];
+                    if (o && !o.startsWith('-')) {
+                        order = o === 'null' ? null : o;
+                        i++;
+                    } else {
+                        throw new Error('--order requires a value.');
                     }
                     break;
                 case '--body':
@@ -107,6 +119,7 @@ export function parseTaskArgs(args: string[]): TaskBuildOptions {
         status,
         priority,
         goal,
+        order,
         bodies,
         addFiles,
         readFiles,
@@ -118,13 +131,20 @@ export function parseTaskArgs(args: string[]): TaskBuildOptions {
  */
 export function buildTask(id: string, options: TaskBuildOptions): Task {
     const now = new Date().toISOString();
+    const status = options.status || 'todo';
+
+    // todo, wip 以外は order を null にする
+    const order = (status === 'todo' || status === 'wip')
+        ? (options.order ?? null)
+        : null;
 
     return {
         id,
-        status: options.status || 'todo',
+        status,
         priority: options.priority,
         version: options.version || 'tbd',
         goal: options.goal,
+        order,
         summary: options.summary || '',
         bodies: (options.bodies || []).map(text => ({ text, created_at: now })),
         files: {

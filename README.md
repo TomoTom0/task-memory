@@ -15,8 +15,8 @@ AIエージェント（および人間）がタスクの状態とコンテキス
 ```bash
 git clone <repository-url> task-memory
 cd task-memory
-bun install
-bun link
+pnpm install
+pnpm link --global
 ```
 
 これで `tm` コマンドが使用可能になります。
@@ -115,6 +115,28 @@ Subcommands: `new`, `list`, `get`, `update`, `return`, `accept`, `reject`.
 ### Environment
 ```bash
 tm env
+```
+
+### Sync
+```bash
+# プロジェクトをsyncに追加
+tm sync add --id my-project --save
+
+# ローカルに保存
+tm sync save
+
+# リモートにpush
+tm sync push
+
+# リモートから取得
+tm sync pull --merge
+```
+
+### Git (sync repository)
+```bash
+tm git status
+tm git remote add origin <url>
+tm git push
 ```
 
 ## 開発

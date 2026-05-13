@@ -16,6 +16,7 @@ export interface Task {
     priority?: string;
     version?: string;
     goal?: string;
+    order?: string | null;
     summary: string;
     bodies: TaskBody[];
     files: TaskFiles;
@@ -23,7 +24,14 @@ export interface Task {
     updated_at: string;
 }
 
+export interface SyncConfig {
+    id: string;           // プロジェクト識別子（同期リポジトリ内でのファイル名）
+    enabled: boolean;     // 同期が有効かどうか
+    auto: boolean;        // 自動同期（タスク変更時に自動でpush）
+}
+
 export interface TaskStore {
+    sync?: SyncConfig;
     tasks: Task[];
 }
 

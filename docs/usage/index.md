@@ -11,17 +11,11 @@
 ```bash
 git clone <repository-url> task-memory
 cd task-memory
-bun install
-bun link
+pnpm install
+pnpm link --global
 ```
 
-これで `tm` コマンドがグローバルに使用可能になります（Bunのbinパスが通っている必要があります）。
-
-または、エイリアスを設定して使用することも可能です。
-
-```bash
-alias tm="bun run /path/to/task-memory/src/index.ts"
-```
+これで `tm` コマンドがグローバルに使用可能になります。
 
 ## 基本的な使い方
 
@@ -160,3 +154,58 @@ tm finish 1
 ## データの保存場所
 
 デフォルトでは `~/.task-memory.json` にデータが保存されます。
+
+## 同期 (`tm sync`)
+
+`~/.local/task-memory/` リポジトリ経由でタスクデータを管理・共有します。
+
+### 初期設定
+
+```bash
+# プロジェクトをsyncに追加（IDは省略するとremote originのURLから自動生成）
+tm sync add --save
+
+# IDを明示的に指定する場合
+tm sync add --id my-project --save
+```
+
+### sync IDの変更
+
+```bash
+# sync IDを変更
+tm sync set --id new-name
+
+# 同期モードを変更（auto: タスク変更時に自動でsave）
+tm sync set auto
+tm sync set manual
+
+# IDとモードを同時に変更
+tm sync set --id new-name auto
+```
+
+### データの保存とpush
+
+```bash
+# ローカルに保存
+tm sync save
+
+# リモートにpush
+tm sync push
+```
+
+### データの取得
+
+```bash
+# リモートから取得（上書き）
+tm sync pull
+
+# マージモードで取得
+tm sync pull --merge
+```
+
+### 状態確認
+
+```bash
+tm sync status
+tm sync list
+```

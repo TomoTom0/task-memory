@@ -1,27 +1,24 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { reviewCommand } from '../src/commands/review';
 import { loadReviews, saveReviews } from '../src/reviewStore';
 import { loadTasks, saveTasks } from '../src/store';
-import { existsSync, unlinkSync } from 'fs';
-import { join } from 'path';
-import { homedir } from 'os';
+import { createTempProject, removeTempDir } from './helpers';
 
 describe('tm review command', () => {
-    const testReviewFile = join(process.cwd(), 'review-memory.json');
-    const testTaskFile = join(process.cwd(), 'task-memory.json');
+    let originalCwd: string;
+    let tempDir: string;
 
     beforeEach(() => {
-        process.env.REVIEW_MEMORY_PATH = 'review-memory.json';
-        process.env.TASK_MEMORY_PATH = 'task-memory.json';
+        originalCwd = process.cwd();
+        tempDir = createTempProject();
+        process.chdir(tempDir);
         saveReviews([]);
         saveTasks([]);
     });
 
     afterEach(() => {
-        if (existsSync(testReviewFile)) unlinkSync(testReviewFile);
-        if (existsSync(testTaskFile)) unlinkSync(testTaskFile);
-        delete process.env.REVIEW_MEMORY_PATH;
-        delete process.env.TASK_MEMORY_PATH;
+        process.chdir(originalCwd);
+        removeTempDir(tempDir);
     });
 
     it('should create a new review', () => {

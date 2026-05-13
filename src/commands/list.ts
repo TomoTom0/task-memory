@@ -1,5 +1,6 @@
 import { loadTasks } from '../store';
 import { loadReviews } from '../reviewStore';
+import { sortByOrder } from '../utils/orderUtils';
 
 export function listCommand(args: string[] = []): void {
     if (args.includes('--help') || args.includes('-h')) {
@@ -14,6 +15,7 @@ Options:
   --version <v>    Filter by version
   --tbd            Filter by version 'tbd' (includes closed/done)
   --released       Filter by released tasks (non-tbd version, includes closed/done)
+  --sort <key>     Sort by: order (default), id, created
   --head [N]       Show first N tasks (default: 10)
   --tail [N]       Show last N tasks (default: 10)
 `);
@@ -38,6 +40,7 @@ Options:
     let filterStatus: string | null = null;
     let filterVersion: string | null = null;
     let released = false;
+    let sortBy: 'order' | 'id' | 'created' = 'order';
 
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
@@ -81,6 +84,20 @@ Options:
             case '--released':
                 released = true;
                 showAll = true;
+                break;
+            case '--sort':
+                if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
+                    const sortValue = args[++i];
+                    if (sortValue === 'order' || sortValue === 'id' || sortValue === 'created') {
+                        sortBy = sortValue;
+                    } else {
+                        console.error(`Error: Invalid sort key '${sortValue}'. Allowed: order, id, created.`);
+                        return;
+                    }
+                } else {
+                    console.error("Error: --sort requires a value.");
+                    return;
+                }
                 break;
             case '--head':
             case '--tail':
@@ -131,25 +148,49 @@ Options:
         return true;
     });
 
+    // Sort tasks
+    let sortedTasks = activeTasks;
+    switch (sortBy) {
+        case 'order':
+            sortedTasks = sortByOrder(
+                activeTasks,
+                (t) => t.order ?? null,
+                (t) => t.id
+            );
+            break;
+        case 'id':
+            sortedTasks = [...activeTasks].sort((a, b) => {
+                const numA = parseInt(a.id.replace(/\D/g, ''), 10) || 0;
+                const numB = parseInt(b.id.replace(/\D/g, ''), 10) || 0;
+                return numA - numB;
+            });
+            break;
+        case 'created':
+            sortedTasks = [...activeTasks].sort((a, b) => {
+                return a.created_at.localeCompare(b.created_at);
+            });
+            break;
+    }
+
     const reviews = loadReviews();
     const checkingReviews = reviews.filter(r => r.status === 'checking');
 
     // Apply head/tail to tasks and reviews
-    let displayTasks = activeTasks;
+    let displayTasks = sortedTasks;
     let displayReviews = checkingReviews;
 
     if (headCount !== null) {
-        displayTasks = activeTasks.slice(0, headCount);
+        displayTasks = sortedTasks.slice(0, headCount);
         const remaining = headCount - displayTasks.length;
         displayReviews = remaining > 0 ? checkingReviews.slice(0, remaining) : [];
     } else if (tailCount !== null) {
-        const totalLength = activeTasks.length + checkingReviews.length;
+        const totalLength = sortedTasks.length + checkingReviews.length;
         const startIndex = Math.max(0, totalLength - tailCount);
 
-        const tasksToSkip = Math.min(startIndex, activeTasks.length);
-        displayTasks = activeTasks.slice(tasksToSkip);
+        const tasksToSkip = Math.min(startIndex, sortedTasks.length);
+        displayTasks = sortedTasks.slice(tasksToSkip);
 
-        const reviewsToSkip = Math.max(0, startIndex - activeTasks.length);
+        const reviewsToSkip = Math.max(0, startIndex - sortedTasks.length);
         displayReviews = checkingReviews.slice(reviewsToSkip);
     }
 
