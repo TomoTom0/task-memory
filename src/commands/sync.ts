@@ -8,8 +8,8 @@ import {
     generateSyncId,
     getSyncDir,
     runGitCommand,
+    runGitCommandCapture,
 } from '../syncStore';
-import { spawnSync } from 'child_process';
 import type { SyncConfig, Task } from '../types';
 
 function parseArgs(args: string[]): { subcommand: string; options: Record<string, string | boolean>; positional: string[] } {
@@ -130,13 +130,9 @@ function handlePush(): void {
     const pad = (n: number) => String(n).padStart(2, '0');
     const defaultMessage = `sync: ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
 
-    const commitResult = spawnSync('git', ['commit', '-m', defaultMessage], {
-        cwd: getSyncDir(),
-        encoding: 'utf-8',
-        stdio: 'pipe',
-    });
+    const commitResult = runGitCommandCapture(['commit', '-m', defaultMessage]);
     if (commitResult.status !== 0) {
-        if (commitResult.stdout?.includes('nothing to commit')) {
+        if (commitResult.stdout.includes('nothing to commit')) {
             console.log('Nothing to commit.');
         } else {
             console.error('Failed to commit.');
