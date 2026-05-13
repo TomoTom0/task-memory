@@ -162,11 +162,25 @@ tm finish 1
 ### 初期設定
 
 ```bash
-# プロジェクトをsyncに追加
-tm sync add --id my-project --save
+# プロジェクトをsyncに追加（IDは省略するとremote originのURLから自動生成）
+tm sync add --save
 
-# 同期モードを自動に設定（タスク変更時に自動でsave）
+# IDを明示的に指定する場合
+tm sync add --id my-project --save
+```
+
+### sync IDの変更
+
+```bash
+# sync IDを変更
+tm sync set --id new-name
+
+# 同期モードを変更（auto: タスク変更時に自動でsave）
 tm sync set auto
+tm sync set manual
+
+# IDとモードを同時に変更
+tm sync set --id new-name auto
 ```
 
 ### データの保存とpush

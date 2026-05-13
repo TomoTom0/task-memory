@@ -131,6 +131,34 @@ describe('syncCommand', () => {
         });
     });
 
+    describe('set', () => {
+        it('should update sync id', () => {
+            syncCommand(['set', '--id', 'renamed-project']);
+            const store = loadStore();
+            expect(store.sync!.id).toBe('renamed-project');
+        });
+
+        it('should set auto mode', () => {
+            syncCommand(['set', 'auto']);
+            const store = loadStore();
+            expect(store.sync!.auto).toBe(true);
+        });
+
+        it('should set manual mode', () => {
+            syncCommand(['set', 'auto']);
+            syncCommand(['set', 'manual']);
+            const store = loadStore();
+            expect(store.sync!.auto).toBe(false);
+        });
+
+        it('should update id and mode together', () => {
+            syncCommand(['set', '--id', 'new-id', 'auto']);
+            const store = loadStore();
+            expect(store.sync!.id).toBe('new-id');
+            expect(store.sync!.auto).toBe(true);
+        });
+    });
+
     describe('status', () => {
         it('should show sync status', () => {
             const logs: string[] = [];
