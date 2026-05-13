@@ -165,17 +165,26 @@ export function runGitCommandCapture(args: string[]): { status: number; stdout: 
 }
 
 export function generateSyncId(): string {
-    // カレントディレクトリのgitリポジトリ名を使用
-    const result = spawnSync('git', ['rev-parse', '--show-toplevel'], {
+    const originResult = spawnSync('git', ['remote', 'get-url', 'origin'], {
         cwd: process.cwd(),
         encoding: 'utf-8'
     });
 
-    if (result.status === 0 && result.stdout) {
-        const repoPath = result.stdout.trim();
-        return basename(repoPath) || 'unknown';
+    if (originResult.status === 0 && originResult.stdout) {
+        const url = originResult.stdout.trim();
+        // Extract "owner/repo" from HTTPS or SSH remote URLs
+        const match = url.match(/[:/]([^/]+\/[^/]+?)(?:\.git)?$/);
+        if (match?.[1]) return match[1].replace('/', '-');
     }
 
-    // gitリポジトリでない場合はディレクトリ名を使用
+    const toplevelResult = spawnSync('git', ['rev-parse', '--show-toplevel'], {
+        cwd: process.cwd(),
+        encoding: 'utf-8'
+    });
+
+    if (toplevelResult.status === 0 && toplevelResult.stdout) {
+        return basename(toplevelResult.stdout.trim()) || 'unknown';
+    }
+
     return basename(process.cwd()) || 'unknown';
 }
