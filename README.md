@@ -15,8 +15,8 @@ AIエージェント（および人間）がタスクの状態とコンテキス
 ```bash
 git clone <repository-url> task-memory
 cd task-memory
-bun install
-bun link
+pnpm install
+pnpm link --global
 ```
 
 これで `tm` コマンドが使用可能になります。

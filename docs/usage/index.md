@@ -11,17 +11,11 @@
 ```bash
 git clone <repository-url> task-memory
 cd task-memory
-bun install
-bun link
+pnpm install
+pnpm link --global
 ```
 
-これで `tm` コマンドがグローバルに使用可能になります（Bunのbinパスが通っている必要があります）。
-
-または、エイリアスを設定して使用することも可能です。
-
-```bash
-alias tm="bun run /path/to/task-memory/src/index.ts"
-```
+これで `tm` コマンドがグローバルに使用可能になります。
 
 ## 基本的な使い方
 
