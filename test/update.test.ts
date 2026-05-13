@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { updateCommand } from '../src/commands/update';
 import { saveTasks, loadTasks } from '../src/store';
 import type { Task } from '../src/types';

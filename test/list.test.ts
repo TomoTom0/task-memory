@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, spyOn } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { listCommand } from '../src/commands/list';
 import { saveTasks } from '../src/store';
 import { saveReviews } from '../src/reviewStore';
@@ -6,7 +6,7 @@ import type { Task, Review } from '../src/types';
 import { createTempProject, removeTempDir } from './helpers';
 
 describe('tm list command', () => {
-    const logSpy = spyOn(console, 'log');
+    const logSpy = vi.spyOn(console, 'log');
     let originalCwd: string;
     let tempDir: string;
 

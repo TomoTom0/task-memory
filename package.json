@@ -19,21 +19,23 @@
     "claude"
   ],
   "bin": {
-    "tm": "dist/tm"
+    "tm": "dist/index.js"
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "bun build src/index.ts --outfile=dist/tm --compile",
-    "prepublishOnly": "npm run build"
+    "build": "tsup",
+    "test": "vitest run",
+    "prepublishOnly": "pnpm run build"
   },
   "engines": {
     "node": ">=18"
   },
   "devDependencies": {
-    "@types/bun": "latest",
     "@types/node": "^20",
-    "typescript": "^5"
+    "tsup": "^8",
+    "typescript": "^5",
+    "vitest": "^2"
   }
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { syncCommand } from '../src/commands/sync';
 import { saveToSync, pullFromSync, initSyncRepo, getSyncDir, generateSyncId } from '../src/syncStore';
 import { loadStore, saveStore } from '../src/store';

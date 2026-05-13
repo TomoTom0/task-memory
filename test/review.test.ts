@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { reviewCommand } from '../src/commands/review';
 import { loadReviews, saveReviews } from '../src/reviewStore';
 import { loadTasks, saveTasks } from '../src/store';
