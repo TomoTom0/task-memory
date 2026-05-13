@@ -162,6 +162,12 @@ function handlePull(options: Record<string, string | boolean>): void {
         process.exit(1);
     }
 
+    // リモートの変更を取得
+    const pullStatus = runGitCommand(['pull', '--rebase']);
+    if (pullStatus !== 0) {
+        console.error('Warning: git pull failed. Using local data.');
+    }
+
     const remoteStore = pullFromSync(syncConfig.id);
     if (!remoteStore) {
         process.exit(1);
