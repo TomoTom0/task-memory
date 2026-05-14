@@ -9,6 +9,7 @@ import { releaseCommand } from './commands/release';
 import { closeCommand } from './commands/close';
 import { syncCommand } from './commands/sync';
 import { gitCommand } from './commands/git';
+import { docsCommand } from './commands/docs';
 import { setAfterSaveCallback } from './store';
 import { tryAutoSync } from './syncStore';
 
@@ -64,6 +65,9 @@ switch (command) {
   case 'git':
     gitCommand(commandArgs);
     break;
+  case 'docs':
+    docsCommand(commandArgs);
+    break;
   case 'help':
   case '--help':
   case '-h':
@@ -91,6 +95,7 @@ Commands:
       --version <v>            Filter by version
       --tbd                    Filter by version 'tbd' (includes closed/done)
       --released               Filter by released tasks (non-tbd version)
+      --sort <key>             Sort by: order (default), id, created
       --head [N]               Show first N tasks (default: 10)
       --tail [N]               Show last N tasks (default: 10)
 
@@ -107,7 +112,9 @@ Commands:
     Options:
       --status, -s <status>    Update status (todo, wip, done, pending, long, closed)
       --priority, -p <value>   Update priority
+      --version, -v <value>    Update version
       --goal, -g <text>        Update completion goal
+      --order, -o <value>      Update progress order (use 'null' to clear)
       --body, -b <text>        Append body text
       --add-file, -a <path>    Add editable file
       --rm-file, -d <path>     Remove editable file
@@ -132,6 +139,9 @@ Commands:
 
   git <git-command> [args]
     Run git commands in ~/.local/task-memory/ repository.
+
+  docs [page]
+    Show documentation. Pages: usage (default), agent-claude-md, agent-guide
 
 Examples:
   tm new "Refactor auth" --status wip --body "Starting now" --priority high
