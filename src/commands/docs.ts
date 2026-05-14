@@ -1,6 +1,6 @@
-import usageDocs from '../../docs/usage/index.md?raw';
-import agentClaudeMdDocs from '../../docs/usage/agent-claude-md.md?raw';
-import agentGuideDocs from '../../docs/usage/agent-guide.md?raw';
+import usageDocs from '../../docs/usage/index.md';
+import agentClaudeMdDocs from '../../docs/usage/agent-claude-md.md';
+import agentGuideDocs from '../../docs/usage/agent-guide.md';
 
 const docMap: Record<string, string> = {
     'usage': usageDocs,

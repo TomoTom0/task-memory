@@ -1,9 +1,9 @@
 # coding agentへのtm設定ガイド
 
-`tm docs claude-md` の内容をCLAUDE.mdに追記することで、coding agentがtmを使ったタスク管理を行えるようになります。
+`tm docs agent-claude-md` の内容をCLAUDE.mdに追記することで、coding agentがtmを使ったタスク管理を行えるようになります。
 
 ```bash
-tm docs claude-md >> CLAUDE.md
+tm docs agent-claude-md >> CLAUDE.md
 ```
 
 ## 各ルールの意図
