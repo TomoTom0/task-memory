@@ -99,6 +99,13 @@ tm list --released --head 3
 tm list --priority high --status pending
 ```
 
+**ソート順の指定:**
+```bash
+tm list --sort order    # order昇順（デフォルト）
+tm list --sort id       # ID順
+tm list --sort created  # 作成日時順
+```
+
 ### 3. タスクの更新 (`tm update`)
 
 タスクの状態を更新したり、作業ログ（body）を追記したりします。
@@ -120,6 +127,20 @@ tm update 1 --body "JWTの実装を開始"
 
 ```bash
 tm update 1 --add-file src/auth.ts
+```
+
+**進行順序の設定:**
+
+```bash
+tm update 1 --order 1
+tm update 2 --order 1-1
+tm update 1 --order null   # orderを解除
+```
+
+**バージョンの設定:**
+
+```bash
+tm update 1 --version 1.0.0
 ```
 
 **複数タスクの同時更新（コンテキストスイッチ）:**
@@ -208,4 +229,20 @@ tm sync pull --merge
 ```bash
 tm sync status
 tm sync list
+```
+
+## ドキュメントの表示 (`tm docs`)
+
+各種ドキュメントを表示します。AIエージェントの設定に利用できます。
+
+```bash
+# ユーザーガイド（デフォルト）
+tm docs
+tm docs usage
+
+# CLAUDE.md追記用テンプレート
+tm docs agent-claude-md
+
+# agent向けルールの意図説明
+tm docs agent-guide
 ```

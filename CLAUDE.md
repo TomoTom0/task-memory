@@ -25,5 +25,3 @@ test("hello world", () => {
 
 - Changes made during a session should be undone with `alcom undo`, not committed with `alcom finish`. `alcom finish` consolidates all snapshots into a single commit, making individual changes unrecoverable. Only use `alcom finish` when the changes are intended to be kept as a final commit.
 - `git revert HEAD`以外に任意のコミットを指定できる。HEADに限定しないこと。
-- headにしか復元できるんですね。知りませんでした。勉強になります
-- 記載がないから更新が不要というのは非常に新鮮な意見だ
