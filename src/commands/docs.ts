@@ -23,12 +23,13 @@ Pages:
         return;
     }
 
-    const content = docMap[page];
-    if (!content) {
+    if (!Object.hasOwn(docMap, page)) {
         console.error(`Error: Unknown docs page '${page}'.`);
         console.error(`Available pages: ${Object.keys(docMap).join(', ')}`);
         process.exit(1);
     }
+
+    const content = docMap[page];
 
     console.log(content);
 }
