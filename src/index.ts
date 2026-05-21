@@ -103,7 +103,7 @@ Commands:
     Get task details (JSON).
     Options:
       --all, -a, --history     Show full history of bodies
-      --last <N>               Show first and last N bodies
+      --last <N>               Show first and last N-1 bodies (total N)
 
   finish (fin, f) <id...>
     Mark task(s) as done.

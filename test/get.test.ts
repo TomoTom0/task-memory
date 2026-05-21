@@ -62,7 +62,7 @@ describe('tm get', () => {
         const parsed = JSON.parse(out);
         expect(parsed[0].bodies).toHaveLength(1);
         expect(parsed[0].bodies[0].text).toBe('third');
-        expect(parsed[0]._bodies_note).toBe('他2件のbodyあり (--all で全表示, --last N で最新N件)');
+        expect(parsed[0]._bodies_note).toBe('他2件のbodyあり (--all で全表示, --last N で先頭と最新N-1件)');
     });
 
     it('should show all bodies with --all', () => {
@@ -117,5 +117,18 @@ describe('tm get', () => {
         const parsed = JSON.parse(out);
         expect(parsed[0].bodies).toHaveLength(0);
         expect(parsed[0]._bodies_note).toBeUndefined();
+    });
+
+    it('should show latest body with --last 1 (same as default)', () => {
+        setupTasks([makeTask([
+            { text: 'first', created_at: '2026-01-01T00:00:00.000Z' },
+            { text: 'second', created_at: '2026-01-02T00:00:00.000Z' },
+            { text: 'third', created_at: '2026-01-03T00:00:00.000Z' },
+        ])]);
+        const out = captureOutput(() => getCommand(['1', '--last', '1']));
+        const parsed = JSON.parse(out);
+        expect(parsed[0].bodies).toHaveLength(1);
+        expect(parsed[0].bodies[0].text).toBe('third');
+        expect(parsed[0]._bodies_note).toBe('他2件のbodyあり (--all で全表示)');
     });
 });

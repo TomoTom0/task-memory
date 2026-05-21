@@ -7,7 +7,7 @@ Usage: tm get <id...> [options]
 
 Options:
   --all, -a, --history     Show full history of bodies
-  --last <N>               Show last N bodies
+  --last <N>               Show first and last N-1 bodies (total N)
 `);
         return;
     }
@@ -62,6 +62,13 @@ Options:
                 const total = task.bodies.length;
                 if (total <= lastN) {
                     // 全件収まるのでそのまま
+                } else if (lastN === 1) {
+                    const lastBody = task.bodies[total - 1];
+                    taskOutput.bodies = lastBody ? [lastBody] : [];
+                    const omitted = total - 1;
+                    if (omitted > 0) {
+                        taskOutput._bodies_note = `他${omitted}件のbodyあり (--all で全表示)`;
+                    }
                 } else {
                     // 最初の1件 + 末尾の(lastN-1)件
                     const head = task.bodies[0];
@@ -79,7 +86,7 @@ Options:
                 }
                 const omitted = task.bodies.length - 1;
                 if (omitted > 0) {
-                    taskOutput._bodies_note = `他${omitted}件のbodyあり (--all で全表示, --last N で最新N件)`;
+                    taskOutput._bodies_note = `他${omitted}件のbodyあり (--all で全表示, --last N で先頭と最新N-1件)`;
                 }
             }
 
