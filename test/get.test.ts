@@ -62,7 +62,7 @@ describe('tm get', () => {
         const parsed = JSON.parse(out);
         expect(parsed[0].bodies).toHaveLength(1);
         expect(parsed[0].bodies[0].text).toBe('third');
-        expect(parsed[0]._bodies_note).toBe('他2件のbodyあり (--all で全表示, --last N で先頭と最新N-1件)');
+        expect(parsed[0]._bodies_note).toBe('2 more bodies available (use --all to show all, --last N for first and last N-1)');
     });
 
     it('should show all bodies with --all', () => {
@@ -87,7 +87,7 @@ describe('tm get', () => {
         expect(parsed[0].bodies).toHaveLength(2);
         expect(parsed[0].bodies[0].text).toBe('first');
         expect(parsed[0].bodies[1].text).toBe('third');
-        expect(parsed[0]._bodies_note).toBe('1件のbody省略 (--all で全表示)');
+        expect(parsed[0]._bodies_note).toBe('1 body omitted (use --all to show all)');
     });
 
     it('should show all bodies with --last when N >= total', () => {
@@ -129,6 +129,6 @@ describe('tm get', () => {
         const parsed = JSON.parse(out);
         expect(parsed[0].bodies).toHaveLength(1);
         expect(parsed[0].bodies[0].text).toBe('third');
-        expect(parsed[0]._bodies_note).toBe('他2件のbodyあり (--all で全表示)');
+        expect(parsed[0]._bodies_note).toBe('2 more bodies available (use --all to show all)');
     });
 });
