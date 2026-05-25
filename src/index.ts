@@ -102,7 +102,8 @@ Commands:
   get (g) <id...> [options]
     Get task details (JSON).
     Options:
-      --all, -a, --history, -h     Show full history of bodies
+      --all, -a, --history     Show full history of bodies
+      --last <N>               Show first and last N-1 bodies (total N)
 
   finish (fin, f) <id...>
     Mark task(s) as done.
