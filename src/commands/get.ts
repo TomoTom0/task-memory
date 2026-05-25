@@ -67,7 +67,7 @@ Options:
                     taskOutput.bodies = lastBody ? [lastBody] : [];
                     const omitted = total - 1;
                     if (omitted > 0) {
-                        taskOutput._bodies_note = `${omitted} more bodies available (use --all to show all)`;
+                        taskOutput._bodies_note = omitted + (omitted === 1 ? ' more body available' : ' more bodies available') + ' (use --all to show all)';
                     }
                 } else {
                     // 最初の1件 + 末尾の(lastN-1)件
@@ -76,7 +76,7 @@ Options:
                     taskOutput.bodies = head ? [head, ...tail] : tail;
                     const omitted = total - lastN;
                     if (omitted > 0) {
-                        taskOutput._bodies_note = `${omitted} bodies omitted (use --all to show all)`;
+                        taskOutput._bodies_note = omitted + (omitted === 1 ? ' body omitted' : ' bodies omitted') + ' (use --all to show all)';
                     }
                 }
             } else if (task.bodies.length > 0) {
@@ -86,7 +86,7 @@ Options:
                 }
                 const omitted = task.bodies.length - 1;
                 if (omitted > 0) {
-                    taskOutput._bodies_note = `${omitted} more bodies available (use --all to show all, --last N for first and last N-1)`;
+                    taskOutput._bodies_note = omitted + (omitted === 1 ? ' more body available' : ' more bodies available') + ' (use --all to show all, --last N for first and last N-1)';
                 }
             }
 

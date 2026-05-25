@@ -87,7 +87,7 @@ describe('tm get', () => {
         expect(parsed[0].bodies).toHaveLength(2);
         expect(parsed[0].bodies[0].text).toBe('first');
         expect(parsed[0].bodies[1].text).toBe('third');
-        expect(parsed[0]._bodies_note).toBe('1 bodies omitted (use --all to show all)');
+        expect(parsed[0]._bodies_note).toBe('1 body omitted (use --all to show all)');
     });
 
     it('should show all bodies with --last when N >= total', () => {
