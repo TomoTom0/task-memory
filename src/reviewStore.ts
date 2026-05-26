@@ -2,10 +2,14 @@ import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { existsSync, readFileSync, writeFileSync, statSync } from 'fs';
 import type { Review, ReviewStore } from './types';
-import { findGitPath } from './store';
+import { isGlobalMode, NotGitError, resolveGitPath } from './store';
 
 export function getReviewDbPath(): string {
-    const gitPath = findGitPath(process.cwd());
+    if (isGlobalMode()) {
+        return join(homedir(), '.review-memory.json');
+    }
+
+    const gitPath = resolveGitPath();
     if (gitPath) {
         try {
             if (statSync(gitPath).isDirectory()) {
@@ -16,7 +20,7 @@ export function getReviewDbPath(): string {
         return join(dirname(gitPath), 'review-memory.json');
     }
 
-    return join(homedir(), '.review-memory.json');
+    throw new NotGitError();
 }
 
 export function loadReviews(): Review[] {
