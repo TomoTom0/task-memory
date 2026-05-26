@@ -10,7 +10,7 @@ import { closeCommand } from './commands/close';
 import { syncCommand } from './commands/sync';
 import { gitCommand } from './commands/git';
 import { docsCommand } from './commands/docs';
-import { setAfterSaveCallback } from './store';
+import { setAfterSaveCallback, setGlobalMode, NotGitError } from './store';
 import { tryAutoSync } from './syncStore';
 
 // 自動同期コールバックを設定
@@ -19,8 +19,25 @@ setAfterSaveCallback((store) => {
 });
 
 const args = process.argv.slice(2);
+
+// --global / -G フラグを抽出
+const globalIdx = args.findIndex(a => a === '--global' || a === '-G');
+if (globalIdx !== -1) {
+    setGlobalMode(true);
+    args.splice(globalIdx, 1);
+}
+
 const command = args[0];
 const commandArgs = args.slice(1);
+
+// NotGitError のハンドリング
+process.on('uncaughtException', (err) => {
+    if (err instanceof NotGitError) {
+        console.error(err.message);
+        process.exit(1);
+    }
+    throw err;
+});
 
 switch (command) {
   case 'new':
@@ -72,7 +89,10 @@ switch (command) {
   case '--help':
   case '-h':
     console.log(`
-Usage: tm <command> [args]
+Usage: tm [--global] <command> [args]
+
+Global options:
+  --global, -G             Use home directory for storage (for non-git environments)
 
 Commands:
   new <summary> [options]

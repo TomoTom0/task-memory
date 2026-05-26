@@ -182,7 +182,22 @@ tm finish 1
 
 ## データの保存場所
 
-デフォルトでは `~/.task-memory.json` にデータが保存されます。
+Gitリポジトリ内で実行した場合、`.git/task-memory.json` に保存されます。
+Gitリポジトリ外で実行するとエラーになります。
+
+### グローバルモード
+
+`--global` / `-G` オプションを使用すると、Gitリポジトリの有無に関わらず `~/.task-memory.json` に保存されます。
+
+```bash
+tm --global list
+tm -G new "タスク"
+```
+
+### coding agentからの呼び出し
+
+環境変数 `CODING_AGENT_ROOT` が設定されている場合、そのパスをプロジェクトルートとして使用します。
+この環境変数はcoding agent側で設定する必要があります。
 
 ## 同期 (`tm sync`)
 
