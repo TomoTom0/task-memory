@@ -31,13 +31,15 @@ const command = args[0];
 const commandArgs = args.slice(1);
 
 // NotGitError のハンドリング
-process.on('uncaughtException', (err) => {
+const handleUncaught = (err: unknown) => {
     if (err instanceof NotGitError) {
         console.error(err.message);
         process.exit(1);
     }
+    process.off('uncaughtException', handleUncaught);
     throw err;
-});
+};
+process.on('uncaughtException', handleUncaught);
 
 switch (command) {
   case 'new':

@@ -2,8 +2,7 @@ import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { existsSync, readFileSync, writeFileSync, statSync } from 'fs';
 import type { Review, ReviewStore } from './types';
-import { isGlobalMode, NotGitError } from './store';
-import { resolveGitPath } from './store';
+import { isGlobalMode, NotGitError, resolveGitPath } from './store';
 
 export function getReviewDbPath(): string {
     if (isGlobalMode()) {
