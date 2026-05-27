@@ -1,4 +1,4 @@
-import { loadTasks, saveTasks, getTaskById } from '../store';
+import { loadTasks, saveTasks, getTaskById, getCurrentCommit } from '../store';
 import type { Task } from '../types';
 
 export function updateCommand(args: string[]): void {
@@ -31,11 +31,13 @@ Options:
             console.error('Error: No task ID specified for update. Usage: tm update <id> [options] ...');
             return;
         }
+        const commit = getCurrentCommit();
         for (const id of currentTargetIds) {
             const task = getTaskById(tasks, id);
             if (task) {
                 action(task);
                 task.updated_at = new Date().toISOString();
+                if (commit) task.updated_commit = commit;
                 updated = true;
             } else {
                 console.error(`Error: ID '${id}' not found.`);

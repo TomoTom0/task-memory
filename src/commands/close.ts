@@ -1,4 +1,4 @@
-import { loadTasks, saveTasks, getTaskById } from '../store';
+import { loadTasks, saveTasks, getTaskById, getCurrentCommit } from '../store';
 import type { TaskBody } from '../types';
 
 export function closeCommand(args: string[]): void {
@@ -38,6 +38,7 @@ Options:
   }
 
   const tasks = loadTasks();
+  const commit = getCurrentCommit();
   let updatedCount = 0;
 
   ids.forEach(id => {
@@ -45,6 +46,7 @@ Options:
     if (task) {
       task.status = 'closed';
       task.updated_at = new Date().toISOString();
+      if (commit) task.updated_commit = commit;
 
       // Clear version if it is 'tbd'
       if (task.version === 'tbd') {

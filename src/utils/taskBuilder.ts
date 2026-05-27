@@ -1,4 +1,5 @@
 import type { Task, TaskStatus, TaskBody } from '../types';
+import { getCurrentCommit } from '../store';
 
 export interface TaskBuildOptions {
     summary?: string;
@@ -138,6 +139,8 @@ export function buildTask(id: string, options: TaskBuildOptions): Task {
         ? (options.order ?? null)
         : null;
 
+    const created_commit = getCurrentCommit();
+
     return {
         id,
         status,
@@ -152,6 +155,7 @@ export function buildTask(id: string, options: TaskBuildOptions): Task {
             edit: options.addFiles || []
         },
         created_at: now,
-        updated_at: now
+        updated_at: now,
+        ...(created_commit ? { created_commit, updated_commit: created_commit } : {}),
     };
 }

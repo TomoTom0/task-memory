@@ -22,6 +22,8 @@ export interface Task {
     files: TaskFiles;
     created_at: string;
     updated_at: string;
+    created_commit?: string;
+    updated_commit?: string;
 }
 
 export interface SyncConfig {
