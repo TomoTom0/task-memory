@@ -68,7 +68,7 @@ Options:
                 if (task.status !== 'done') {
                     task.status = 'done';
                     task.updated_at = new Date().toISOString();
-                    if (commit) task.updated_commit = commit;
+                    task.updated_commit = commit;
                     console.log(`Task ${task.id} marked as done.`);
                     updated = true;
                 } else {

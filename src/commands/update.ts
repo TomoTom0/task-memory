@@ -37,7 +37,7 @@ Options:
             if (task) {
                 action(task);
                 task.updated_at = new Date().toISOString();
-                if (commit) task.updated_commit = commit;
+                task.updated_commit = commit;
                 updated = true;
             } else {
                 console.error(`Error: ID '${id}' not found.`);

@@ -46,7 +46,7 @@ Options:
     if (task) {
       task.status = 'closed';
       task.updated_at = new Date().toISOString();
-      if (commit) task.updated_commit = commit;
+      task.updated_commit = commit;
 
       // Clear version if it is 'tbd'
       if (task.version === 'tbd') {

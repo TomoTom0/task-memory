@@ -50,7 +50,7 @@ Options:
         if (task) {
             task.version = version;
             task.updated_at = new Date().toISOString();
-            if (commit) task.updated_commit = commit;
+            task.updated_commit = commit;
             updated = true;
             console.log(`Task ${id} version set to ${version}`);
         } else {
