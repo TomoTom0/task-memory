@@ -210,12 +210,15 @@ export function getCurrentCommit(): string | undefined {
     const gitPath = resolveGitPath();
     if (!gitPath) return undefined;
 
-    const gitDir = statSync(gitPath).isDirectory() ? gitPath : dirname(gitPath);
-    const result = spawnSync('git', ['rev-parse', '--short', 'HEAD'], {
-        cwd: dirname(gitDir),
-        encoding: 'utf-8',
-    });
+    try {
+        const result = spawnSync('git', ['rev-parse', '--short', 'HEAD'], {
+            cwd: dirname(gitPath),
+            encoding: 'utf-8',
+        });
 
-    if (result.status !== 0 || !result.stdout) return undefined;
-    return result.stdout.trim();
+        if (result.status !== 0 || !result.stdout) return undefined;
+        return result.stdout.trim();
+    } catch {
+        return undefined;
+    }
 }
