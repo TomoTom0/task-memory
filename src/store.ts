@@ -1,6 +1,7 @@
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { existsSync, readFileSync, writeFileSync, statSync } from 'fs';
+import { spawnSync } from 'child_process';
 import type { Task, TaskStore, SyncConfig } from './types';
 import { normalizeOrders } from './utils/orderUtils';
 
@@ -203,4 +204,21 @@ export function getNextId(tasks: Task[]): string {
         }
     }
     return `TASK-${max + 1}`;
+}
+
+export function getCurrentCommit(): string | undefined {
+    const gitPath = resolveGitPath();
+    if (!gitPath) return undefined;
+
+    try {
+        const result = spawnSync('git', ['rev-parse', '--short', 'HEAD'], {
+            cwd: dirname(gitPath),
+            encoding: 'utf-8',
+        });
+
+        if (result.status !== 0 || !result.stdout) return undefined;
+        return result.stdout.trim();
+    } catch {
+        return undefined;
+    }
 }

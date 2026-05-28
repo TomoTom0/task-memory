@@ -1,4 +1,4 @@
-import { loadTasks, saveTasks, getTaskById } from '../store';
+import { loadTasks, saveTasks, getTaskById, getCurrentCommit } from '../store';
 
 export function releaseCommand(args: string[]): void {
     if (args.includes('--help') || args.includes('-h')) {
@@ -42,6 +42,7 @@ Options:
     }
 
     const tasks = loadTasks();
+    const commit = getCurrentCommit();
     let updated = false;
 
     for (const id of ids) {
@@ -49,6 +50,7 @@ Options:
         if (task) {
             task.version = version;
             task.updated_at = new Date().toISOString();
+            task.updated_commit = commit;
             updated = true;
             console.log(`Task ${id} version set to ${version}`);
         } else {
