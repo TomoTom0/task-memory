@@ -1,8 +1,19 @@
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { existsSync, readFileSync, writeFileSync, statSync } from 'fs';
+import { spawnSync } from 'child_process';
 import type { Task, TaskStore, SyncConfig } from './types';
 import { normalizeOrders } from './utils/orderUtils';
+
+let globalMode = false;
+
+export function setGlobalMode(mode: boolean): void {
+    globalMode = mode;
+}
+
+export function isGlobalMode(): boolean {
+    return globalMode;
+}
 
 export function findGitPath(startDir: string): string | null {
     let currentDir = startDir;
@@ -26,8 +37,28 @@ export function findGitPath(startDir: string): string | null {
     }
 }
 
+export class NotGitError extends Error {
+    constructor() {
+        super('Not a git repository. Use --global to use home directory, or run in a git repository.');
+        this.name = 'NotGitError';
+    }
+}
+
+export function resolveGitPath(): string | null {
+    const agentRoot = process.env.CODING_AGENT_ROOT;
+    if (agentRoot) {
+        const gitPath = join(agentRoot, '.git');
+        return existsSync(gitPath) ? gitPath : null;
+    }
+    return findGitPath(process.cwd());
+}
+
 export function getDbPath(): string {
-    const gitPath = findGitPath(process.cwd());
+    if (globalMode) {
+        return join(homedir(), '.task-memory.json');
+    }
+
+    const gitPath = resolveGitPath();
     if (gitPath) {
         try {
             if (statSync(gitPath).isDirectory()) {
@@ -38,7 +69,7 @@ export function getDbPath(): string {
         return join(dirname(gitPath), 'task-memory.json');
     }
 
-    return join(homedir(), '.task-memory.json');
+    throw new NotGitError();
 }
 
 // 内部キャッシュ（sync設定を保持するため）
@@ -173,4 +204,22 @@ export function getNextId(tasks: Task[]): string {
         }
     }
     return `TASK-${max + 1}`;
+}
+
+export function getCurrentCommit(): string | undefined {
+    const gitPath = resolveGitPath();
+    if (!gitPath) return undefined;
+
+    try {
+        const result = spawnSync('git', ['rev-parse', '--short', 'HEAD'], {
+            cwd: dirname(gitPath),
+            encoding: 'utf-8',
+        });
+
+        if (result.error || result.status !== 0 || !result.stdout) return undefined;
+        const commit = result.stdout.trim();
+        return commit || undefined;
+    } catch {
+        return undefined;
+    }
 }

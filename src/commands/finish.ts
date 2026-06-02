@@ -1,4 +1,4 @@
-import { loadTasks, saveTasks, getTaskById } from '../store';
+import { loadTasks, saveTasks, getTaskById, getCurrentCommit } from '../store';
 import type { Task } from '../types';
 
 export function finishCommand(args: string[]): void {
@@ -19,6 +19,7 @@ Options:
     }
 
     const tasks = loadTasks();
+    const commit = getCurrentCommit();
     let currentTargetIds: string[] = [];
     let updated = false;
     let lastActionWasOption = false;
@@ -42,7 +43,9 @@ Options:
                         const task = getTaskById(tasks, id);
                         if (task) {
                             task.bodies.push({ text: bodyText, created_at: now });
-                            task.updated_at = now; // Update timestamp again
+                            task.updated_at = now;
+                            task.updated_commit = commit;
+                            updated = true;
                         }
                     }
                 } else {
@@ -67,6 +70,7 @@ Options:
                 if (task.status !== 'done') {
                     task.status = 'done';
                     task.updated_at = new Date().toISOString();
+                    task.updated_commit = commit;
                     console.log(`Task ${task.id} marked as done.`);
                     updated = true;
                 } else {

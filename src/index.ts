@@ -10,7 +10,7 @@ import { closeCommand } from './commands/close';
 import { syncCommand } from './commands/sync';
 import { gitCommand } from './commands/git';
 import { docsCommand } from './commands/docs';
-import { setAfterSaveCallback } from './store';
+import { setAfterSaveCallback, setGlobalMode, NotGitError } from './store';
 import { tryAutoSync } from './syncStore';
 
 // 自動同期コールバックを設定
@@ -19,60 +19,71 @@ setAfterSaveCallback((store) => {
 });
 
 const args = process.argv.slice(2);
+
+// --global / -G フラグを抽出（先頭引数のみチェック）
+if (args[0] === '--global' || args[0] === '-G') {
+    setGlobalMode(true);
+    args.shift();
+}
+
 const command = args[0];
 const commandArgs = args.slice(1);
 
-switch (command) {
-  case 'new':
-    newCommand(commandArgs);
-    break;
-  case 'list':
-  case 'ls':
-  case 'l':
-    listCommand(commandArgs);
-    break;
-  case 'get':
-  case 'g':
-    getCommand(commandArgs);
-    break;
-  case 'finish':
-  case 'fin':
-  case 'f':
-    finishCommand(commandArgs);
-    break;
-  case 'update':
-  case 'up':
-  case 'u':
-    updateCommand(commandArgs);
-    break;
-  case 'env':
-    envCommand(commandArgs);
-    break;
-  case 'review':
-  case 'rev':
-  case 'tmr':
-    reviewCommand(commandArgs);
-    break;
-  case 'release':
-    releaseCommand(commandArgs);
-    break;
-  case 'close':
-    closeCommand(commandArgs);
-    break;
-  case 'sync':
-    syncCommand(commandArgs);
-    break;
-  case 'git':
-    gitCommand(commandArgs);
-    break;
-  case 'docs':
-    docsCommand(commandArgs);
-    break;
-  case 'help':
-  case '--help':
-  case '-h':
-    console.log(`
-Usage: tm <command> [args]
+try {
+    switch (command) {
+        case 'new':
+            newCommand(commandArgs);
+            break;
+        case 'list':
+        case 'ls':
+        case 'l':
+            listCommand(commandArgs);
+            break;
+        case 'get':
+        case 'g':
+            getCommand(commandArgs);
+            break;
+        case 'finish':
+        case 'fin':
+        case 'f':
+            finishCommand(commandArgs);
+            break;
+        case 'update':
+        case 'up':
+        case 'u':
+            updateCommand(commandArgs);
+            break;
+        case 'env':
+            envCommand(commandArgs);
+            break;
+        case 'review':
+        case 'rev':
+        case 'tmr':
+            reviewCommand(commandArgs);
+            break;
+        case 'release':
+            releaseCommand(commandArgs);
+            break;
+        case 'close':
+            closeCommand(commandArgs);
+            break;
+        case 'sync':
+            syncCommand(commandArgs);
+            break;
+        case 'git':
+            gitCommand(commandArgs);
+            break;
+        case 'docs':
+            docsCommand(commandArgs);
+            break;
+        case 'help':
+        case '--help':
+        case '-h':
+            console.log(`
+Usage: tm [--global] <command> [args]
+
+Global options:
+  --global, -G             Use home directory for storage (for non-git environments)
 
 Commands:
   new <summary> [options]
@@ -148,18 +159,25 @@ Examples:
   tm new "Refactor auth" --status wip --body "Starting now" --priority high
   tm update 1 --status done 2 --status wip --body "Fixing bug"
   tm get 1 --history
-    `);
-    break;
-  default:
-    // If no command provided, show help
-    if (!command) {
-      console.log(`
+            `);
+            break;
+        default:
+            // If no command provided, show help
+            if (!command) {
+                console.log(`
 Usage: tm <command> [args]
 
 Run 'tm help' for detailed usage and examples.
-        `);
-    } else {
-      console.error(`Error: Unknown command '${command}'. Run 'tm help' for usage.`);
-      process.exit(1);
+            `);
+            } else {
+                console.error(`Error: Unknown command '${command}'. Run 'tm help' for usage.`);
+                process.exit(1);
+            }
     }
+} catch (err: unknown) {
+    if (err instanceof NotGitError) {
+        console.error(err.message);
+        process.exit(1);
+    }
+    throw err;
 }
