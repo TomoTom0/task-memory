@@ -20,27 +20,16 @@ setAfterSaveCallback((store) => {
 
 const args = process.argv.slice(2);
 
-// --global / -G フラグを抽出
-const globalIdx = args.findIndex(a => a === '--global' || a === '-G');
-if (globalIdx !== -1) {
+// --global / -G フラグを抽出（先頭引数のみチェック）
+if (args[0] === '--global' || args[0] === '-G') {
     setGlobalMode(true);
-    args.splice(globalIdx, 1);
+    args.shift();
 }
 
 const command = args[0];
 const commandArgs = args.slice(1);
 
-// NotGitError のハンドリング
-const handleUncaught = (err: unknown) => {
-    if (err instanceof NotGitError) {
-        console.error(err.message);
-        process.exit(1);
-    }
-    process.off('uncaughtException', handleUncaught);
-    throw err;
-};
-process.on('uncaughtException', handleUncaught);
-
+try {
 switch (command) {
   case 'new':
     newCommand(commandArgs);
@@ -184,4 +173,11 @@ Run 'tm help' for detailed usage and examples.
       console.error(`Error: Unknown command '${command}'. Run 'tm help' for usage.`);
       process.exit(1);
     }
+}
+} catch (err: unknown) {
+    if (err instanceof NotGitError) {
+        console.error(err.message);
+        process.exit(1);
+    }
+    throw err;
 }
