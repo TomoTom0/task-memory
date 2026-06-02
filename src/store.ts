@@ -216,8 +216,9 @@ export function getCurrentCommit(): string | undefined {
             encoding: 'utf-8',
         });
 
-        if (result.status !== 0 || !result.stdout) return undefined;
-        return result.stdout.trim();
+        if (result.error || result.status !== 0 || !result.stdout) return undefined;
+        const commit = result.stdout.trim();
+        return commit || undefined;
     } catch {
         return undefined;
     }

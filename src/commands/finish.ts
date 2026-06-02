@@ -43,7 +43,9 @@ Options:
                         const task = getTaskById(tasks, id);
                         if (task) {
                             task.bodies.push({ text: bodyText, created_at: now });
-                            task.updated_at = now; // Update timestamp again
+                            task.updated_at = now;
+                            task.updated_commit = commit;
+                            updated = true;
                         }
                     }
                 } else {
