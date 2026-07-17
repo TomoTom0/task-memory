@@ -9,7 +9,7 @@ Usage: tm list [options]
 
 Options:
   --status-all, -a Show all tasks (including done/closed)
-  --open           Show all open tasks (todo, wip, pending, long)
+  --open           Show all open tasks (todo, wip, pending, long). blocked excluded; use -s blocked or -a.
   --priority <p>   Filter by priority
   --status, -s <s> Filter by status
   --version <v>    Filter by version
@@ -141,7 +141,7 @@ Options:
 
         if (showAll) return true;
 
-        if (t.status === 'done' || t.status === 'closed') return false;
+        if (t.status === 'done' || t.status === 'closed' || t.status === 'blocked') return false;
 
         if (!showOpen && (t.status === 'pending' || t.status === 'long')) return false;
 
@@ -214,7 +214,10 @@ Options:
             versionStr = ` [v:${task.version}]`;
         }
 
-        console.log(`${displayId}: ${task.summary} [${task.status}]${priorityStr}${versionStr}`);
+        const blockedStr = task.status === 'blocked'
+            ? ` [BLOCKED: ${task.gate ? task.gate : 'no gate'}]`
+            : '';
+        console.log(`${displayId}: ${task.summary} [${task.status}]${priorityStr}${versionStr}${blockedStr}`);
     });
 
     displayReviews.forEach(review => {

@@ -1,5 +1,6 @@
 import { loadTasks, saveTasks, getTaskById, getCurrentCommit } from '../store';
 import type { Task } from '../types';
+import { isTaskStatus, canTransition, blockedExitMessage, TASK_STATUSES } from '../utils/statusGuard';
 
 export function updateCommand(args: string[]): void {
     if (args.includes('--help') || args.includes('-h')) {
@@ -7,7 +8,7 @@ export function updateCommand(args: string[]): void {
 Usage: tm update <id...> [options]
 
 Options:
-  --status, -s <status>    Update status (todo, wip, done, pending, long, closed)
+  --status, -s <status>    Update status (todo, wip, done, pending, long, blocked, closed)
   --priority, -p <value>   Update priority
   --version, -v <value>    Update version
   --goal, -g <text>        Update completion goal
@@ -16,7 +17,33 @@ Options:
   --add-file, -a <path>    Add editable file
   --rm-file, -d <path>     Remove editable file
   --read-file, -r <path>   Add read-only file
+  --gate <text>            Set start condition (only with --status blocked)
+  --force                  Allow transitioning a blocked task out of blocked
 `);
+        return;
+    }
+
+    // Pre-scan: --force はグローバルフラグ、blocked/gate のペアリングを検証
+    const force = args.includes('--force');
+    let hasStatusBlocked = false;
+    let hasGate = false;
+    let preScanGate: string | undefined;
+    for (let i = 0; i < args.length; i++) {
+        const a = args[i];
+        if (a === '--status' || a === '-s') {
+            if (args[i + 1] === 'blocked') hasStatusBlocked = true;
+        } else if (a === '--gate') {
+            hasGate = true;
+            const gv = args[i + 1];
+            if (gv && !gv.startsWith('-')) preScanGate = gv;
+        }
+    }
+    if (hasStatusBlocked && !hasGate) {
+        console.error('Error: Setting status to "blocked" requires --gate "..." (the start condition). Prefer: tm block <id> --gate "..."');
+        return;
+    }
+    if (hasGate && !hasStatusBlocked) {
+        console.error('Error: --gate is only valid together with --status blocked. To update a blocked task\'s gate, use: tm block <id> --gate "..."');
         return;
     }
 
@@ -26,7 +53,7 @@ Options:
     let lastActionWasOption = false;
 
     // Helper to apply updates to current targets
-    const applyUpdate = (action: (task: Task) => void) => {
+    const applyUpdate = (action: (task: Task) => boolean | void) => {
         if (currentTargetIds.length === 0) {
             console.error('Error: No task ID specified for update. Usage: tm update <id> [options] ...');
             return;
@@ -35,7 +62,8 @@ Options:
         for (const id of currentTargetIds) {
             const task = getTaskById(tasks, id);
             if (task) {
-                action(task);
+                // action が false を返した場合は拒否（例: blocked からの遷移）。updated_at/保存は行わない。
+                if (action(task) === false) continue;
                 task.updated_at = new Date().toISOString();
                 task.updated_commit = commit;
                 updated = true;
@@ -56,16 +84,29 @@ Options:
                 case '--status':
                 case '-s':
                     const status = args[++i];
-                    if (status && ['todo', 'wip', 'done', 'pending', 'long', 'closed'].includes(status)) {
+                    if (status && isTaskStatus(status)) {
                         applyUpdate(t => {
-                            t.status = status as any;
+                            // blocked からの遷移は通常禁止（--force で突破可）
+                            if (!canTransition(t.status, status)) {
+                                if (!force) {
+                                    console.error(blockedExitMessage(t));
+                                    return false;
+                                }
+                                // force で blocked を抜ける場合は gate を解除
+                                t.gate = undefined;
+                            }
+                            // blocked になる場合は gate を設定（pre-scan で検証済み）
+                            if (status === 'blocked' && preScanGate) {
+                                t.gate = preScanGate;
+                            }
+                            t.status = status;
                             // todo, wip 以外に変更したら order を null にする
                             if (status !== 'todo' && status !== 'wip') {
                                 t.order = null;
                             }
                         });
                     } else {
-                        console.error(`Error: Invalid status '${status}'. Allowed: todo, wip, done, pending, long, closed.`);
+                        console.error(`Error: Invalid status '${status}'. Allowed: ${TASK_STATUSES.join(', ')}.`);
                     }
                     break;
                 case '--priority':
@@ -159,6 +200,16 @@ Options:
                     } else {
                         console.error('Error: --read-file requires a path argument.');
                     }
+                    break;
+                case '--gate':
+                    const gateVal = args[++i];
+                    if (!gateVal || gateVal.startsWith('-')) {
+                        console.error('Error: --gate requires a value.');
+                    }
+                    // 適用は --status blocked ケースで preScanGate を使って行う
+                    break;
+                case '--force':
+                    // pre-scan で処理済み。ここでは消費のみ。
                     break;
                 default:
                     console.error(`Error: Unknown option '${arg}'.`);
