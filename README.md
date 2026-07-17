@@ -48,7 +48,7 @@ By default, shows `todo` and `wip` tasks.
 tm list --status-all
 tm ls -a
 
-# オープンなタスク（todo, wip, pending, long）を表示
+# オープンなタスク（todo, wip, pending, long）を表示（blockedは含まない）
 tm list --open
 
 # ステータスでフィルタリング
@@ -86,6 +86,24 @@ Update version:
 tm update 1 --version 1.0.0
 # or
 tm u 1 -v 1.0.0
+```
+
+### Block / Unblock a Task
+
+Mark a task as blocked when it cannot start until some condition is met.
+A blocked task cannot be resumed via `tm update --status wip` or `tm finish`
+(rejected unless forced); resume it explicitly with `tm unblock`.
+
+```bash
+# Block (gate = the start condition that must be met; required)
+tm block 1 --gate "After TASK-3 is done"
+
+# Unblock (clears the gate; default target status is todo)
+tm unblock 1
+tm unblock 1 --status wip   # resume immediately
+
+# Force-resume a blocked task (only with explicit user approval)
+tm update 1 --status wip --force
 ```
 
 ### Get Task Details

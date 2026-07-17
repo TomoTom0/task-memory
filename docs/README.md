@@ -30,6 +30,7 @@
 - `init.md` - 初期化
 - `order.md` - order機能
 - `review.md` - review機能
+- `blocked.md` - blocked状態・gate（開始条件）
 
 ### dev/
 開発者向けドキュメント。

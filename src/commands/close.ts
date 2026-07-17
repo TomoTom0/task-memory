@@ -44,6 +44,10 @@ Options:
   ids.forEach(id => {
     const task = getTaskById(tasks, id);
     if (task) {
+      if (task.status === 'blocked') {
+        console.warn(`Task ${task.id} is blocked (gate: ${task.gate ? `"${task.gate}"` : 'not set'}). Closing anyway.`);
+        task.gate = undefined;
+      }
       task.status = 'closed';
       task.updated_at = new Date().toISOString();
       task.updated_commit = commit;

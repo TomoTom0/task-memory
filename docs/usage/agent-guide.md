@@ -20,6 +20,12 @@ tm docs agent-claude-md >> CLAUDE.md
 
 agentが複数タスクを並行して把握する際に、作業の優先順位と進行順序を明示するためです。orderがないと、agentがどのタスクから着手すべきか判断できません。
 
+### pending と blocked の使い分け
+
+`pending` は「自分の都合で一時的に保留」する軽い状態（いつでも再開可能）です。一方 `blocked` は「外部条件（他タスクの完了、API仕様のfix、ユーザー判断など）が揃うまで着手できない」強いブロック状態で、開始条件（gate）の記載が必須です。
+
+agentがpendingをtodo程度に軽視して勝手に再開してしまう問題を防ぐため、blockedにはCLIレベルのガードを設けています。blockedタスクは `tm update --status wip` や `tm finish` では遷移できず、`tm unblock` または `--force`（ユーザー確認後）でのみ解除できます。条件待ちのタスクには必ず `blocked` + gate を使ってください。
+
 ### 事後記録を求める理由
 
 起票せずに完了した作業もタスクとして残すことで、CHANGELOGやリリースノートの作成時に変更内容を追跡できます。

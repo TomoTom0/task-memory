@@ -41,6 +41,13 @@ tm release <タスクID> --version 0.5.5
 
 # タスクをクローズ（キャンセル・不要になった場合）
 tm close <タスクID> --body "理由"
+
+# タスクをブロック（開始条件が揃うまで着手禁止）
+tm block <タスクID> --gate "開始条件（例: TASK-3完了後、API仕様fix後）"
+
+# ブロック解除（gateが満たされたことを確認してから）
+tm unblock <タスクID>               # todo に戻す
+tm unblock <タスクID> --status wip  # そのまま再開
 ```
 
 ### タスクの進行順序（order）
@@ -77,10 +84,22 @@ tm list --sort created  # 作成日時順
 
 - `todo`: 未着手のタスク
 - `wip`: 作業中のタスク（Work In Progress）
-- `pending`: 保留中のタスク
+- `pending`: 自分の一時保留（いつでも再開可能）
+- `blocked`: 外部条件待ちの強制ブロック。**gate（開始条件）が満たされるまで絶対に着手禁止**
 - `long`: 長期タスク
 - `done`: 完了したタスク
 - `closed`: クローズされたタスク
+
+### blocked 状態（重要）
+
+`blocked` は開始条件（gate）が揃うまで着手してはいけないタスクを表す。**LLMが勝手に再開（blocked→wip/todo）することは禁止**。CLIもこれを技術的に拒否する。
+
+- ブロック: `tm block <id> --gate "開始条件"`（gate必須）
+- 解除: `tm unblock <id>`（gateをクリアしてtodoに戻す。`--status wip`でwip）
+- `tm update <id> --status wip` / `tm finish` は blocked タスクを**拒否**する（`--force`で突破できるが、必ずユーザーに確認すること）
+- gateが満たされたか不明なら、ユーザーに確認するまで絶対に unblock/force しない
+
+※ `tm sync pull` で他端末から流入したタスクはCLIガードの対象外。
 
 ### リリース準備ワークフロー
 

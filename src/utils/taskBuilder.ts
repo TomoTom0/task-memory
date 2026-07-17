@@ -1,11 +1,13 @@
 import type { Task, TaskStatus, TaskBody } from '../types';
 import { getCurrentCommit } from '../store';
+import { isTaskStatus, requiresGate, TASK_STATUSES } from './statusGuard';
 
 export interface TaskBuildOptions {
     summary?: string;
     status?: TaskStatus;
     priority?: string;
     goal?: string;
+    gate?: string;
     order?: string | null;
     bodies?: string[];
     addFiles?: string[];
@@ -21,6 +23,7 @@ export interface TaskBuildOptions {
 export function parseTaskArgs(args: string[]): TaskBuildOptions {
     const summaryParts: string[] = [];
     let status: TaskStatus = 'todo';
+    let gate: string | undefined;
     let priority: string | undefined;
     let goal: string | undefined;
     let order: string | null | undefined;
@@ -37,11 +40,11 @@ export function parseTaskArgs(args: string[]): TaskBuildOptions {
                 case '-s':
                     const s = args[i + 1];
                     if (s && !s.startsWith('-')) {
-                        if (['todo', 'wip', 'done', 'pending', 'long', 'closed'].includes(s)) {
-                            status = s as TaskStatus;
+                        if (isTaskStatus(s)) {
+                            status = s;
                             i++;
                         } else {
-                            throw new Error(`Invalid status '${s}'. Allowed: todo, wip, done, pending, long, closed.`);
+                            throw new Error(`Invalid status '${s}'. Allowed: ${TASK_STATUSES.join(', ')}.`);
                         }
                     } else {
                         throw new Error('--status requires a value.');
@@ -55,6 +58,15 @@ export function parseTaskArgs(args: string[]): TaskBuildOptions {
                         i++;
                     } else {
                         throw new Error('--goal requires a value.');
+                    }
+                    break;
+                case '--gate':
+                    const gateVal = args[i + 1];
+                    if (gateVal && !gateVal.startsWith('-')) {
+                        gate = gateVal;
+                        i++;
+                    } else {
+                        throw new Error('--gate requires a value.');
                     }
                     break;
                 case '--priority':
@@ -115,11 +127,16 @@ export function parseTaskArgs(args: string[]): TaskBuildOptions {
         }
     }
 
+    if (requiresGate(status) && !gate) {
+        throw new Error('Status "blocked" requires --gate "..." (the start condition that must be met before resuming).');
+    }
+
     return {
         summary: summaryParts.join(' ') || undefined,
         status,
         priority,
         goal,
+        gate,
         order,
         bodies,
         addFiles,
@@ -147,6 +164,7 @@ export function buildTask(id: string, options: TaskBuildOptions): Task {
         priority: options.priority,
         version: options.version || 'tbd',
         goal: options.goal,
+        gate: options.gate,
         order,
         summary: options.summary || '',
         bodies: (options.bodies || []).map(text => ({ text, created_at: now })),

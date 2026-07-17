@@ -1,5 +1,6 @@
 import { loadTasks, saveTasks, getTaskById, getCurrentCommit } from '../store';
 import type { Task } from '../types';
+import { blockedExitMessage } from '../utils/statusGuard';
 
 export function finishCommand(args: string[]): void {
     if (args.includes('--help') || args.includes('-h')) {
@@ -66,6 +67,10 @@ Options:
             const id = arg;
             const task = getTaskById(tasks, id);
             if (task) {
+                if (task.status === 'blocked') {
+                    console.error(blockedExitMessage(task));
+                    continue;
+                }
                 // Mark as done immediately
                 if (task.status !== 'done') {
                     task.status = 'done';
