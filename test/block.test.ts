@@ -55,6 +55,17 @@ describe('tm block / tm unblock', () => {
             err.mockRestore();
         });
 
+        it('rejects unknown short options instead of treating them as ids', () => {
+            saveTasks([task()]);
+            const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+            blockCommand(['1', '-x']);
+
+            const tasks = loadTasks();
+            expect(tasks[0]!.status).toBe('todo');
+            expect(err.mock.calls[0]?.[0]).toContain("Unknown option '-x'");
+            err.mockRestore();
+        });
+
         it('rejects blocking done/closed tasks', () => {
             saveTasks([
                 task({ id: 'TASK-1', status: 'done' }),
@@ -117,6 +128,17 @@ describe('tm block / tm unblock', () => {
 
             const tasks = loadTasks();
             expect(tasks[0]!.status).toBe('blocked');
+        });
+
+        it('rejects unknown short options instead of treating them as ids', () => {
+            saveTasks([task({ status: 'blocked', gate: 'cond' })]);
+            const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+            unblockCommand(['1', '-x']);
+
+            const tasks = loadTasks();
+            expect(tasks[0]!.status).toBe('blocked');
+            expect(err.mock.calls[0]?.[0]).toContain("Unknown option '-x'");
+            err.mockRestore();
         });
     });
 });

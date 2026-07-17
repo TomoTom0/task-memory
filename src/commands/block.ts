@@ -30,7 +30,7 @@ Options:
                 console.error('Error: --gate requires a value.');
                 return;
             }
-        } else if (arg.startsWith('--')) {
+        } else if (arg.startsWith('-')) {
             console.error(`Error: Unknown option '${arg}'.`);
             return;
         } else {

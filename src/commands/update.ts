@@ -38,7 +38,7 @@ Options:
             if (gv && !gv.startsWith('-')) preScanGate = gv;
         }
     }
-    if (hasStatusBlocked && !hasGate) {
+    if (hasStatusBlocked && !preScanGate) {
         console.error('Error: Setting status to "blocked" requires --gate "..." (the start condition). Prefer: tm block <id> --gate "..."');
         return;
     }

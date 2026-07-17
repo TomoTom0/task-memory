@@ -222,6 +222,30 @@ describe('tm update blocked / gate', () => {
         expect(tasks[0]!.gate).toBeUndefined();
     });
 
+    it('rejects --status blocked when --gate has no value', () => {
+        setupTasks([{
+            id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: ''
+        }]);
+        const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+        updateCommand(['1', '--status', 'blocked', '--gate']);
+        err.mockRestore();
+        const tasks = loadTasks();
+        expect(tasks[0]!.status).toBe('todo');
+        expect(tasks[0]!.gate).toBeUndefined();
+    });
+
+    it('rejects --status blocked when --gate value is another option', () => {
+        setupTasks([{
+            id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: ''
+        }]);
+        const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+        updateCommand(['1', '--status', 'blocked', '--gate', '--force']);
+        err.mockRestore();
+        const tasks = loadTasks();
+        expect(tasks[0]!.status).toBe('todo');
+        expect(tasks[0]!.gate).toBeUndefined();
+    });
+
     it('forbids resuming a blocked task without --force', () => {
         setupTasks([{
             id: 'TASK-1', status: 'blocked', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', gate: 'cond'

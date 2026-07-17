@@ -31,7 +31,7 @@ Options:
                 console.error(`Error: --status for unblock must be 'todo' or 'wip' (got '${v}').`);
                 return;
             }
-        } else if (arg.startsWith('--')) {
+        } else if (arg.startsWith('-')) {
             console.error(`Error: Unknown option '${arg}'.`);
             return;
         } else {
