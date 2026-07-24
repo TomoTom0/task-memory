@@ -36,6 +36,7 @@ Options:
     const batchGate: string[] = [];      // batchIndex -> そのバッチの最後の gate 値
     const batchBlocked: boolean[] = [];  // batchIndex -> そのバッチに --status blocked があるか
     let batchCount = 0;
+    let malformedGate = false;           // 値なし/不正値の --gate が一つでもあれば全体を拒否
     {
         let bi = 0;
         let lastOpt = false;
@@ -48,7 +49,11 @@ Options:
                 if (a === '--status' || a === '-s') {
                     if (val === 'blocked') batchBlocked[bi] = true;
                 } else if (a === '--gate') {
-                    if (val && !val.startsWith('-')) batchGate[bi] = val;
+                    if (val && !val.startsWith('-')) {
+                        batchGate[bi] = val;
+                    } else {
+                        malformedGate = true;
+                    }
                 }
                 i++; // 値をスキップ（for の i++ と合わせて2進む）
             } else if (a.startsWith('-')) {
@@ -60,6 +65,13 @@ Options:
             }
         }
         batchCount = bi;
+    }
+    // malformed な --gate（値なし/別オプションが続く）は、いかなる変更も適用する前に
+    // コマンド全体を拒否する。実行ループで事後的にエラーを出すと、それより前の
+    // --priority 等の変更（あるいは --force による blocked の強制解除）が既に保存されてしまう。
+    if (malformedGate) {
+        console.error('Error: --gate requires a value.');
+        return;
     }
     // 各バッチのペアリングを検証
     for (let b = 0; b <= batchCount; b++) {
@@ -231,11 +243,9 @@ Options:
                     }
                     break;
                 case '--gate':
-                    const gateVal = args[++i];
-                    if (!gateVal || gateVal.startsWith('-')) {
-                        console.error('Error: --gate requires a value.');
-                    }
-                    // 適用は --status blocked ケースで batchGate[batchIndex] を使って行う
+                    // 値は pre-scan で検証済み（malformed は事前拒否済み）。ここでは値を消費するのみ。
+                    // 適用は --status blocked ケースで batchGate[batchIndex] を使って行う。
+                    i++;
                     break;
                 case '--force':
                     // pre-scan で処理済み。ここでは消費のみ。

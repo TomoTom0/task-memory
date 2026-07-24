@@ -316,4 +316,46 @@ describe('tm update blocked / gate', () => {
         expect(tasks[0]!.status).toBe('blocked');
         expect(tasks[0]!.gate).toBe('cond');
     });
+
+    it('rejects malformed --gate before applying any preceding change', () => {
+        // 値なしの --gate は --status blocked を伴わなくても pre-scan で全体拒否される。
+        // 従来は --priority high が適用された後にエラー表示のみだった。
+        setupTasks([{
+            id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', priority: 'medium'
+        }]);
+        const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+        updateCommand(['1', '--priority', 'high', '--gate']);
+        err.mockRestore();
+        const tasks = loadTasks();
+        expect(tasks[0]!.priority).toBe('medium');
+        expect(tasks[0]!.gate).toBeUndefined();
+    });
+
+    it('rejects malformed --gate before force-resuming a blocked task', () => {
+        // blocked タスクで --gate の値が別オプション(--force)の場合、force-resume される前に拒否。
+        setupTasks([{
+            id: 'TASK-1', status: 'blocked', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', gate: 'cond'
+        }]);
+        const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+        updateCommand(['1', '--status', 'wip', '--gate', '--force']);
+        err.mockRestore();
+        const tasks = loadTasks();
+        expect(tasks[0]!.status).toBe('blocked');
+        expect(tasks[0]!.gate).toBe('cond');
+    });
+
+    it('rejects the whole command when a later batch has a malformed --gate', () => {
+        setupTasks([
+            { id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
+            { id: 'TASK-2', status: 'todo', summary: 'B', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' }
+        ]);
+        const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+        updateCommand(['1', '--status', 'blocked', '--gate', 'A', '2', '--gate']);
+        err.mockRestore();
+        const tasks = loadTasks();
+        expect(tasks[0]!.status).toBe('todo');
+        expect(tasks[0]!.gate).toBeUndefined();
+        expect(tasks[1]!.status).toBe('todo');
+        expect(tasks[1]!.gate).toBeUndefined();
+    });
 });
