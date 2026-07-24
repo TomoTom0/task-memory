@@ -23,34 +23,63 @@ Options:
         return;
     }
 
-    // Pre-scan: --force はグローバルフラグ、blocked/gate のペアリングを検証
+    // Pre-scan: --force はグローバルフラグ。各バッチ（コンテキストスイッチ区切り）ごとに
+    // blocked/gate のペアリングを検証し、バッチごとの gate 値を収集する。
+    // 値を取るオプションの値をスキップしないと "--gate A" の A が ID として誤認され、
+    // バッチ境界がずれるため valueOpts でまとめて処理する。
     const force = args.includes('--force');
-    let hasStatusBlocked = false;
-    let hasGate = false;
-    let preScanGate: string | undefined;
-    for (let i = 0; i < args.length; i++) {
-        const a = args[i];
-        if (a === '--status' || a === '-s') {
-            if (args[i + 1] === 'blocked') hasStatusBlocked = true;
-        } else if (a === '--gate') {
-            hasGate = true;
-            const gv = args[i + 1];
-            if (gv && !gv.startsWith('-')) preScanGate = gv;
+    const valueOpts = new Set([
+        '--status', '-s', '--priority', '-p', '--version', '-v', '--goal', '-g',
+        '--order', '-o', '--body', '-b', '--add-file', '-a', '--rm-file', '-d',
+        '--read-file', '-r', '--gate'
+    ]);
+    const batchGate: string[] = [];      // batchIndex -> そのバッチの最後の gate 値
+    const batchBlocked: boolean[] = [];  // batchIndex -> そのバッチに --status blocked があるか
+    let batchCount = 0;
+    {
+        let bi = 0;
+        let lastOpt = false;
+        for (let i = 0; i < args.length; i++) {
+            const a = args[i];
+            if (!a) continue;
+            if (a.startsWith('-') && valueOpts.has(a)) {
+                lastOpt = true;
+                const val = args[i + 1];
+                if (a === '--status' || a === '-s') {
+                    if (val === 'blocked') batchBlocked[bi] = true;
+                } else if (a === '--gate') {
+                    if (val && !val.startsWith('-')) batchGate[bi] = val;
+                }
+                i++; // 値をスキップ（for の i++ と合わせて2進む）
+            } else if (a.startsWith('-')) {
+                // 値を取らないオプション（--force / -h / 未知の単体）
+                lastOpt = true;
+            } else {
+                // ID: 直前がオプションなら新バッチ開始
+                if (lastOpt) { bi++; lastOpt = false; }
+            }
         }
+        batchCount = bi;
     }
-    if (hasStatusBlocked && !preScanGate) {
-        console.error('Error: Setting status to "blocked" requires --gate "..." (the start condition). Prefer: tm block <id> --gate "..."');
-        return;
-    }
-    if (hasGate && !hasStatusBlocked) {
-        console.error('Error: --gate is only valid together with --status blocked. To update a blocked task\'s gate, use: tm block <id> --gate "..."');
-        return;
+    // 各バッチのペアリングを検証
+    for (let b = 0; b <= batchCount; b++) {
+        const blocked = batchBlocked[b] === true;
+        const gate = batchGate[b];
+        if (blocked && !gate) {
+            console.error('Error: Setting status to "blocked" requires --gate "..." (the start condition). Prefer: tm block <id> --gate "..."');
+            return;
+        }
+        if (gate && !blocked) {
+            console.error('Error: --gate is only valid together with --status blocked. To update a blocked task\'s gate, use: tm block <id> --gate "..."');
+            return;
+        }
     }
 
     const tasks = loadTasks();
     let currentTargetIds: string[] = [];
     let updated = false;
     let lastActionWasOption = false;
+    let batchIndex = 0;
 
     // Helper to apply updates to current targets
     const applyUpdate = (action: (task: Task) => boolean | void) => {
@@ -95,9 +124,9 @@ Options:
                                 // force で blocked を抜ける場合は gate を解除
                                 t.gate = undefined;
                             }
-                            // blocked になる場合は gate を設定（pre-scan で検証済み）
-                            if (status === 'blocked' && preScanGate) {
-                                t.gate = preScanGate;
+                            // blocked になる場合は gate を設定（pre-scan で収集したバッチごとの値）
+                            if (status === 'blocked' && batchGate[batchIndex]) {
+                                t.gate = batchGate[batchIndex];
                             }
                             t.status = status;
                             // todo, wip 以外に変更したら order を null にする
@@ -206,7 +235,7 @@ Options:
                     if (!gateVal || gateVal.startsWith('-')) {
                         console.error('Error: --gate requires a value.');
                     }
-                    // 適用は --status blocked ケースで preScanGate を使って行う
+                    // 適用は --status blocked ケースで batchGate[batchIndex] を使って行う
                     break;
                 case '--force':
                     // pre-scan で処理済み。ここでは消費のみ。
@@ -220,6 +249,7 @@ Options:
             if (lastActionWasOption) {
                 currentTargetIds = [];
                 lastActionWasOption = false;
+                batchIndex++;
             }
             // Assume anything not starting with -- is an ID (or invalid garbage, but we treat as ID for lookup)
             // The spec says "ID (numeric or TASK-n)". 

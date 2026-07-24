@@ -276,4 +276,44 @@ describe('tm update blocked / gate', () => {
         const tasks = loadTasks();
         expect(tasks[0]!.status).toBe('wip');
     });
+
+    it('preserves each batch gate in context-switched blocked updates', () => {
+        setupTasks([
+            { id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
+            { id: 'TASK-2', status: 'todo', summary: 'B', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' }
+        ]);
+        // 従来は pre-scan が最後の --gate 値で全体を上書きし、両タスクとも gate B になった
+        updateCommand(['1', '--status', 'blocked', '--gate', 'A', '2', '--status', 'blocked', '--gate', 'B']);
+        const tasks = loadTasks();
+        expect(tasks[0]!.status).toBe('blocked');
+        expect(tasks[0]!.gate).toBe('A');
+        expect(tasks[1]!.status).toBe('blocked');
+        expect(tasks[1]!.gate).toBe('B');
+    });
+
+    it('rejects when a later context-switched batch omits --gate', () => {
+        setupTasks([
+            { id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
+            { id: 'TASK-2', status: 'todo', summary: 'B', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' }
+        ]);
+        const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+        updateCommand(['1', '--status', 'blocked', '--gate', 'A', '2', '--status', 'blocked']);
+        err.mockRestore();
+        const tasks = loadTasks();
+        // pre-scan でバッチごとに検証して return するため、両タスクとも未変更
+        expect(tasks[0]!.status).toBe('todo');
+        expect(tasks[0]!.gate).toBeUndefined();
+        expect(tasks[1]!.status).toBe('todo');
+        expect(tasks[1]!.gate).toBeUndefined();
+    });
+
+    it('accepts --gate before --status within the same batch', () => {
+        setupTasks([{
+            id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: ''
+        }]);
+        updateCommand(['1', '--gate', 'cond', '--status', 'blocked']);
+        const tasks = loadTasks();
+        expect(tasks[0]!.status).toBe('blocked');
+        expect(tasks[0]!.gate).toBe('cond');
+    });
 });
