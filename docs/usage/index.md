@@ -50,7 +50,7 @@ tm l
 tm list --status-all
 tm ls -a
 
-# オープンなタスク（todo, wip, pending, long）を表示
+# オープンなタスク（todo, wip, pending, long）を表示（blockedは含まない）
 tm list --open
 
 # 特定のステータスのタスクのみ表示
@@ -150,6 +150,25 @@ tm update 1 --status done 2 --status wip --body "バグ調査中"
 # タスク1を完了にし、タスク2をWIPにしてログを追記
 ```
 
+**ブロック状態（blocked）の管理:**
+
+開始条件（gate）が揃うまで着手できないタスクは `blocked` にします。LLMが勝手に再開するのを防ぐため、blocked は `tm update --status wip` や `tm finish` で遷移できず、CLIが技術的に拒否します。
+
+```bash
+# ブロック（gate必須）
+tm block 1 --gate "TASK-3完了後"
+
+# ブロック解除（gateクリア、デフォルトはtodo）
+tm unblock 1
+tm unblock 1 --status wip   # そのまま再開
+
+# update経由でblocked化（--gate必須）
+tm update 1 --status blocked --gate "API仕様fix後"
+
+# 強制解除（ユーザー確認後のみ）
+tm update 1 --status wip --force
+```
+
 ### 4. タスク詳細の確認 (`tm get`)
 
 タスクの詳細情報（JSON形式）を取得します。AIエージェントがコンテキストを復元するのに役立ちます。
@@ -163,9 +182,10 @@ tm get 1
 | フィールド | 説明 |
 |---|---|
 | `id` | タスクID（例: `TASK-1`） |
-| `status` | ステータス（`todo`, `wip`, `done`, `pending`, `long`, `closed`） |
+| `status` | ステータス（`todo`, `wip`, `done`, `pending`, `long`, `blocked`, `closed`） |
 | `summary` | タスクの概要 |
 | `goal` | 完了目標（省略可） |
+| `gate` | 開始条件（`blocked`状態のみ。blocked化時は必須、それ以外は省略可） |
 | `priority` | 優先度（省略可） |
 | `version` | リリースバージョン（未設定時は`tbd`） |
 | `order` | 進行順序（`todo`, `wip`のみ設定可能、省略可） |

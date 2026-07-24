@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { updateCommand } from '../src/commands/update';
 import { saveTasks, loadTasks } from '../src/store';
 import type { Task } from '../src/types';
@@ -172,5 +172,190 @@ describe('tm update argument parsing', () => {
         // TASK-2(order=2) < TASK-1(order=4) なので、正規化後は TASK-2=1, TASK-1=2
         expect(tasks.find(t => t.id === 'TASK-1')!.order).toBe('2');
         expect(tasks.find(t => t.id === 'TASK-2')!.order).toBe('1');
+    });
+});
+
+describe('tm update blocked / gate', () => {
+    let originalCwd: string;
+    let tempDir: string;
+
+    beforeEach(() => {
+        originalCwd = process.cwd();
+        tempDir = createTempProject();
+        process.chdir(tempDir);
+    });
+
+    afterEach(() => {
+        process.chdir(originalCwd);
+        removeTempDir(tempDir);
+    });
+
+    it('sets blocked with --status blocked --gate', () => {
+        setupTasks([{
+            id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: ''
+        }]);
+        updateCommand(['1', '--status', 'blocked', '--gate', 'TASK-2 done']);
+        const tasks = loadTasks();
+        expect(tasks[0]!.status).toBe('blocked');
+        expect(tasks[0]!.gate).toBe('TASK-2 done');
+    });
+
+    it('rejects --status blocked without --gate', () => {
+        setupTasks([{
+            id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: ''
+        }]);
+        const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+        updateCommand(['1', '--status', 'blocked']);
+        err.mockRestore();
+        const tasks = loadTasks();
+        expect(tasks[0]!.status).toBe('todo');
+    });
+
+    it('rejects --gate without --status blocked', () => {
+        setupTasks([{
+            id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: ''
+        }]);
+        const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+        updateCommand(['1', '--gate', 'x']);
+        err.mockRestore();
+        const tasks = loadTasks();
+        expect(tasks[0]!.gate).toBeUndefined();
+    });
+
+    it('rejects --status blocked when --gate has no value', () => {
+        setupTasks([{
+            id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: ''
+        }]);
+        const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+        updateCommand(['1', '--status', 'blocked', '--gate']);
+        err.mockRestore();
+        const tasks = loadTasks();
+        expect(tasks[0]!.status).toBe('todo');
+        expect(tasks[0]!.gate).toBeUndefined();
+    });
+
+    it('rejects --status blocked when --gate value is another option', () => {
+        setupTasks([{
+            id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: ''
+        }]);
+        const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+        updateCommand(['1', '--status', 'blocked', '--gate', '--force']);
+        err.mockRestore();
+        const tasks = loadTasks();
+        expect(tasks[0]!.status).toBe('todo');
+        expect(tasks[0]!.gate).toBeUndefined();
+    });
+
+    it('forbids resuming a blocked task without --force', () => {
+        setupTasks([{
+            id: 'TASK-1', status: 'blocked', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', gate: 'cond'
+        }]);
+        const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+        updateCommand(['1', '--status', 'wip']);
+        err.mockRestore();
+        const tasks = loadTasks();
+        expect(tasks[0]!.status).toBe('blocked');
+        expect(tasks[0]!.gate).toBe('cond');
+    });
+
+    it('allows resuming a blocked task with --force (clears gate)', () => {
+        setupTasks([{
+            id: 'TASK-1', status: 'blocked', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', gate: 'cond'
+        }]);
+        updateCommand(['1', '--status', 'wip', '--force']);
+        const tasks = loadTasks();
+        expect(tasks[0]!.status).toBe('wip');
+        expect(tasks[0]!.gate).toBeUndefined();
+    });
+
+    it('--force is order-independent', () => {
+        setupTasks([{
+            id: 'TASK-1', status: 'blocked', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', gate: 'cond'
+        }]);
+        updateCommand(['--force', '1', '--status', 'wip']);
+        const tasks = loadTasks();
+        expect(tasks[0]!.status).toBe('wip');
+    });
+
+    it('preserves each batch gate in context-switched blocked updates', () => {
+        setupTasks([
+            { id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
+            { id: 'TASK-2', status: 'todo', summary: 'B', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' }
+        ]);
+        // 従来は pre-scan が最後の --gate 値で全体を上書きし、両タスクとも gate B になった
+        updateCommand(['1', '--status', 'blocked', '--gate', 'A', '2', '--status', 'blocked', '--gate', 'B']);
+        const tasks = loadTasks();
+        expect(tasks[0]!.status).toBe('blocked');
+        expect(tasks[0]!.gate).toBe('A');
+        expect(tasks[1]!.status).toBe('blocked');
+        expect(tasks[1]!.gate).toBe('B');
+    });
+
+    it('rejects when a later context-switched batch omits --gate', () => {
+        setupTasks([
+            { id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
+            { id: 'TASK-2', status: 'todo', summary: 'B', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' }
+        ]);
+        const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+        updateCommand(['1', '--status', 'blocked', '--gate', 'A', '2', '--status', 'blocked']);
+        err.mockRestore();
+        const tasks = loadTasks();
+        // pre-scan でバッチごとに検証して return するため、両タスクとも未変更
+        expect(tasks[0]!.status).toBe('todo');
+        expect(tasks[0]!.gate).toBeUndefined();
+        expect(tasks[1]!.status).toBe('todo');
+        expect(tasks[1]!.gate).toBeUndefined();
+    });
+
+    it('accepts --gate before --status within the same batch', () => {
+        setupTasks([{
+            id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: ''
+        }]);
+        updateCommand(['1', '--gate', 'cond', '--status', 'blocked']);
+        const tasks = loadTasks();
+        expect(tasks[0]!.status).toBe('blocked');
+        expect(tasks[0]!.gate).toBe('cond');
+    });
+
+    it('rejects malformed --gate before applying any preceding change', () => {
+        // 値なしの --gate は --status blocked を伴わなくても pre-scan で全体拒否される。
+        // 従来は --priority high が適用された後にエラー表示のみだった。
+        setupTasks([{
+            id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', priority: 'medium'
+        }]);
+        const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+        updateCommand(['1', '--priority', 'high', '--gate']);
+        err.mockRestore();
+        const tasks = loadTasks();
+        expect(tasks[0]!.priority).toBe('medium');
+        expect(tasks[0]!.gate).toBeUndefined();
+    });
+
+    it('rejects malformed --gate before force-resuming a blocked task', () => {
+        // blocked タスクで --gate の値が別オプション(--force)の場合、force-resume される前に拒否。
+        setupTasks([{
+            id: 'TASK-1', status: 'blocked', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', gate: 'cond'
+        }]);
+        const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+        updateCommand(['1', '--status', 'wip', '--gate', '--force']);
+        err.mockRestore();
+        const tasks = loadTasks();
+        expect(tasks[0]!.status).toBe('blocked');
+        expect(tasks[0]!.gate).toBe('cond');
+    });
+
+    it('rejects the whole command when a later batch has a malformed --gate', () => {
+        setupTasks([
+            { id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
+            { id: 'TASK-2', status: 'todo', summary: 'B', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' }
+        ]);
+        const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+        updateCommand(['1', '--status', 'blocked', '--gate', 'A', '2', '--gate']);
+        err.mockRestore();
+        const tasks = loadTasks();
+        expect(tasks[0]!.status).toBe('todo');
+        expect(tasks[0]!.gate).toBeUndefined();
+        expect(tasks[1]!.status).toBe('todo');
+        expect(tasks[1]!.gate).toBeUndefined();
     });
 });

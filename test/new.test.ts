@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { newCommand } from '../src/commands/new';
 import { loadTasks, saveTasks } from '../src/store';
 import type { Task } from '../src/types';
@@ -85,5 +85,22 @@ describe('tm new argument parsing', () => {
         const tasks = loadTasks();
         expect(tasks.length).toBe(1);
         expect(tasks[0].order).toBeNull();
+    });
+
+    it('should create a blocked task with --gate', () => {
+        newCommand(['Blocked Task', '--status', 'blocked', '--gate', 'API spec fixed']);
+        const tasks = loadTasks();
+        expect(tasks.length).toBe(1);
+        expect(tasks[0].status).toBe('blocked');
+        expect(tasks[0].gate).toBe('API spec fixed');
+    });
+
+    it('should not create a blocked task without --gate', () => {
+        const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+        newCommand(['Blocked Task', '--status', 'blocked']);
+        const tasks = loadTasks();
+        expect(tasks.length).toBe(0);
+        expect(err).toHaveBeenCalled();
+        err.mockRestore();
     });
 });

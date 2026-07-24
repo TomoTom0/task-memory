@@ -168,4 +168,36 @@ describe('tm list command', () => {
         expect(logSpy.mock.calls[1][0]).toContain('Second ID');
         expect(logSpy.mock.calls[2][0]).toContain('Third ID');
     });
+
+    it('should hide blocked tasks by default and with --open', () => {
+        saveTasks([
+            { id: 'TASK-1', status: 'todo', summary: 'Todo', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
+            { id: 'TASK-2', status: 'blocked', summary: 'Blocked', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', gate: 'cond' },
+        ]);
+
+        listCommand([]);
+        expect(logSpy).toHaveBeenCalledTimes(1);
+        expect(logSpy.mock.calls[0][0]).toContain('Todo');
+
+        logSpy.mockClear();
+        listCommand(['--open']);
+        expect(logSpy).toHaveBeenCalledTimes(1);
+        expect(logSpy.mock.calls[0][0]).toContain('Todo');
+    });
+
+    it('should show blocked tasks with -a and -s blocked, including gate', () => {
+        saveTasks([
+            { id: 'TASK-2', status: 'blocked', summary: 'Blocked', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', gate: 'API spec' },
+        ]);
+
+        logSpy.mockClear();
+        listCommand(['-a']);
+        expect(logSpy).toHaveBeenCalledTimes(1);
+        expect(logSpy.mock.calls[0][0]).toContain('BLOCKED: API spec');
+
+        logSpy.mockClear();
+        listCommand(['-s', 'blocked']);
+        expect(logSpy).toHaveBeenCalledTimes(1);
+        expect(logSpy.mock.calls[0][0]).toContain('BLOCKED: API spec');
+    });
 });
