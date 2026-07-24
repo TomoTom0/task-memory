@@ -1,4 +1,5 @@
-import { pathToFileURL } from 'url';
+import { fileURLToPath } from 'url';
+import { realpathSync } from 'fs';
 import { newCommand } from './commands/new';
 import { listCommand } from './commands/list';
 import { getCommand } from './commands/get';
@@ -221,15 +222,21 @@ function main(): void {
     }
 }
 
-// 直接実行された場合のみ main を起動（テスト import 時は実行しない）
-const invokedDirectly = (() => {
-    if (!process.argv[1]) return false;
+// 直接実行されたか判定。symlink 経由（npm/pnpm の global bin install）でも
+// 正しく検出するため、実行パスとモジュールパスをそれぞれ realpath で解決して比較する。
+// 従来は pathToFileURL(process.argv[1]).href === import.meta.url だったが、
+// symlink 実行時は process.argv[1] がリンクパス・import.meta.url が実パスになり
+// 不一致で main() が起動せず、インストール版の全コマンドがサイレント終了していた。
+export function isMainEntry(argv1: string | undefined, moduleUrl: string): boolean {
+    if (!argv1) return false;
     try {
-        return pathToFileURL(process.argv[1]).href === import.meta.url;
+        return realpathSync(argv1) === realpathSync(fileURLToPath(moduleUrl));
     } catch {
         return false;
     }
-})();
+}
+
+const invokedDirectly = isMainEntry(process.argv[1], import.meta.url);
 
 if (invokedDirectly) {
     main();
