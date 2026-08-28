@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { listCommand } from '../src/commands/list';
-import { saveTasks } from '../src/store';
+import { saveTasks, saveStore } from '../src/store';
 import { saveReviews } from '../src/reviewStore';
 import type { Task, Review } from '../src/types';
 import { createTempProject, removeTempDir } from './helpers';
@@ -140,11 +140,33 @@ describe('tm list command', () => {
     });
 
     it('should sort by ID when orders are same', () => {
+        // order が重複した状態は saveTasks の正規化で解消されるため、
+        // 表示上「orderが同じ（＝未設定）」でID順にタイブレークされるケースは order:null で再現する
         saveTasks([
-            { id: 'TASK-3', status: 'todo', summary: 'C', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: '1' },
-            { id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: '1' },
-            { id: 'TASK-2', status: 'todo', summary: 'B', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: '1' },
+            { id: 'TASK-3', status: 'todo', summary: 'C', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: null },
+            { id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: null },
+            { id: 'TASK-2', status: 'todo', summary: 'B', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: null },
         ]);
+
+        listCommand([]);
+
+        expect(logSpy).toHaveBeenCalledTimes(3);
+        expect(logSpy.mock.calls[0][0]).toContain('A');
+        expect(logSpy.mock.calls[1][0]).toContain('B');
+        expect(logSpy.mock.calls[2][0]).toContain('C');
+    });
+
+    it('should sort by ID when non-null orders are duplicated (raw store data bypassing normalization)', () => {
+        // list.ts は loadTasks() を直接呼ぶため saveTasks() の正規化(resolveDuplicateOrders)を
+        // 経由しない生データ(手動編集/レガシーデータ等)を表示することがある。
+        // そのケースで sortByOrder の ID タイブレークが機能することを確認する。
+        saveStore({
+            tasks: [
+                { id: 'TASK-3', status: 'todo', summary: 'C', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: '1' },
+                { id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: '1' },
+                { id: 'TASK-2', status: 'todo', summary: 'B', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: '1' },
+            ],
+        });
 
         listCommand([]);
 

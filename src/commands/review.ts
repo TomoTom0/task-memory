@@ -322,7 +322,7 @@ function handleAccept(args: string[]) {
     }
 
     if (createdTaskIds.length > 0) {
-        saveTasks(tasks);
+        saveTasks(tasks, createdTaskIds);
         review.related_task_ids = [...(review.related_task_ids || []), ...createdTaskIds];
     }
 

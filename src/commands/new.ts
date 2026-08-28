@@ -36,7 +36,7 @@ Options:
     const newTask = buildTask(id, options);
 
     tasks.push(newTask);
-    saveTasks(tasks);
+    saveTasks(tasks, [id]);
 
     console.log(`${id} ${options.summary}`);
 }

@@ -173,6 +173,112 @@ describe('tm update argument parsing', () => {
         expect(tasks.find(t => t.id === 'TASK-1')!.order).toBe('2');
         expect(tasks.find(t => t.id === 'TASK-2')!.order).toBe('1');
     });
+
+    it('既にorder=1のタスクがいる状態でtm update --order 1すると、新しく設定した方が1を得て既存保持者が繰り下がる', () => {
+        setupTasks([
+            { id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: '1' },
+            { id: 'TASK-2', status: 'todo', summary: 'B', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
+        ]);
+
+        updateCommand(['2', '--order', '1']);
+
+        const tasks = loadTasks();
+        expect(tasks.find(t => t.id === 'TASK-2')!.order).toBe('1');
+        expect(tasks.find(t => t.id === 'TASK-1')!.order).toBe('2');
+    });
+
+    it('バッチ更新で複数タスクに同じorderを設定すると、後から処理された方が値を保持する', () => {
+        setupTasks([
+            { id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
+            { id: 'TASK-2', status: 'todo', summary: 'B', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
+        ]);
+
+        // 1コマンド内でTASK-1 -> TASK-2の順に order=1 が適用される
+        updateCommand(['1', '--order', '1', '2', '--order', '1']);
+
+        const tasks = loadTasks();
+        expect(tasks.find(t => t.id === 'TASK-2')!.order).toBe('1');
+        expect(tasks.find(t => t.id === 'TASK-1')!.order).toBe('2');
+    });
+
+    it('バッチ更新の逆順では逆の結果になる（ID順ではなく適用順であることの確認）', () => {
+        setupTasks([
+            { id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
+            { id: 'TASK-2', status: 'todo', summary: 'B', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
+        ]);
+
+        // 1コマンド内でTASK-2 -> TASK-1の順に order=1 が適用される
+        updateCommand(['2', '--order', '1', '1', '--order', '1']);
+
+        const tasks = loadTasks();
+        expect(tasks.find(t => t.id === 'TASK-1')!.order).toBe('1');
+        expect(tasks.find(t => t.id === 'TASK-2')!.order).toBe('2');
+    });
+
+    it('不正な形式のorderはエラーになりタスクは変更されない', () => {
+        setupTasks([
+            { id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: '1' },
+        ]);
+        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
+
+        updateCommand(['1', '--order', 'abc']);
+
+        expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid order format'));
+        const tasks = loadTasks();
+        expect(tasks.find(t => t.id === 'TASK-1')!.order).toBe('1');
+
+        errorSpy.mockRestore();
+    });
+
+    it('不正な形式のorder(負の数)はエラーになる', () => {
+        setupTasks([
+            { id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
+        ]);
+        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
+
+        updateCommand(['1', '--order', '-1']);
+
+        expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid order format'));
+        const tasks = loadTasks();
+        expect(tasks.find(t => t.id === 'TASK-1')!.order).toBeNull();
+
+        errorSpy.mockRestore();
+    });
+
+    it('不正なorderより前の有効な変更も含めて全体が拒否され、部分適用されない', () => {
+        setupTasks([
+            { id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: '1', priority: 'low' },
+        ]);
+        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
+
+        // --priorityは有効だが、後続の--order abcでコマンド全体が事前拒否される
+        updateCommand(['1', '--priority', 'high', '--order', 'abc']);
+
+        expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid order format'));
+        const tasks = loadTasks();
+        expect(tasks.find(t => t.id === 'TASK-1')!.priority).toBe('low'); // 先の変更は保存されない
+        expect(tasks.find(t => t.id === 'TASK-1')!.order).toBe('1');
+
+        errorSpy.mockRestore();
+    });
+
+    it('不正なorderが重複していてもNaNに壊れず、事前バリデーションで弾かれる', () => {
+        setupTasks([
+            { id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
+            { id: 'TASK-2', status: 'todo', summary: 'B', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },
+        ]);
+        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
+
+        updateCommand(['1', '--order', 'abc']);
+        updateCommand(['2', '--order', 'abc']);
+
+        const tasks = loadTasks();
+        expect(tasks.find(t => t.id === 'TASK-1')!.order).toBeNull();
+        expect(tasks.find(t => t.id === 'TASK-2')!.order).toBeNull();
+        expect(JSON.stringify(tasks)).not.toContain('NaN');
+
+        errorSpy.mockRestore();
+    });
 });
 
 describe('tm update blocked / gate', () => {

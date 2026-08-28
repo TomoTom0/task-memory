@@ -30,6 +30,28 @@ export function formatOrder(parts: number[]): string {
 }
 
 /**
+ * order 文字列の形式が正しいか検証する
+ * 各セグメントが非負の数値（整数または小数）で、ハイフンで区切られていること
+ * （例: "1", "1-1", "2-3", "1.5", "1-2.5" は有効。"abc", "-1", "1-", "1--2" は無効）
+ * 桁数が大きすぎて parseFloat が Infinity を返すセグメントも無効とする
+ * Number.MAX_VALUE に等しいセグメントも無効とする（nextUp が Infinity を返し、
+ * 重複解消の割り当てループが停止しなくなるため）
+ *
+ * @param order 検証対象の文字列
+ */
+export function isValidOrderFormat(order: string): boolean {
+    if (!order) return false;
+    if (!/^\d+(\.\d+)?(-\d+(\.\d+)?)*$/.test(order)) return false;
+    return order.split("-").every((s) => {
+        const v = parseFloat(s);
+        // 有限かつ nextUp(v) も有限（= v < Number.MAX_VALUE）であること。
+        // 有限な倍精度浮動小数点数のうち successor が Infinity になるのは
+        // Number.MAX_VALUE のみ（ビットパターン+1 が Infinity になる）
+        return Number.isFinite(v) && v < Number.MAX_VALUE;
+    });
+}
+
+/**
  * order 文字列を比較する
  * null/undefined は後ろに配置される
  *
@@ -180,6 +202,139 @@ export function normalizeOrders(
         if (o == null) return null;
         return normalizedMap.get(index) ?? o;
     });
+}
+
+/**
+ * x より大きい最小の表現可能な倍精度浮動小数点数を返す（IEEE 754 の nextUp 相当）。
+ * 非負の有限数であること（order の各セグメントは非負を前提としている）。
+ * 非負の有限数はビットパターンが値の順に単調増加するため、+1 で次の表現可能値になる。
+ */
+function nextUp(x: number): number {
+    if (!Number.isFinite(x)) return x;
+    const buf = new DataView(new ArrayBuffer(8));
+    buf.setFloat64(0, x);
+    buf.setBigUint64(0, buf.getBigUint64(0) + 1n);
+    return buf.getFloat64(0);
+}
+
+/**
+ * 同一のorder値を持つ要素を、priorityの高い順に微小な小数値へ分離する。
+ * normalizeOrders() に通す前の前処理として使う。
+ *
+ * priority が高い（数値が大きい）要素ほど「新しく設定された」ことを意味し、
+ * その要素は元の値をそのまま保持する（勝者）。他の要素（敗者）は、
+ * 同じ親配下で「勝者の値」と「次に大きい既存の値（無ければ勝者+1）」の
+ * 間に収まる値へ均等に散らされる。
+ *
+ * 浮動小数点の丸めにより均等分割の位置が前の割り当て値（勝者/前の敗者）以下や
+ * 既存の単独値と同値になる場合は、表現可能な次の値（nextUp）へ進めて解消する。
+ * 間隔が ulp 級の高精度 order では敗者が区間上限の既存値を超えて配置される
+ * ことがあるが、distinct 性と相対順序は保たれ、最終的に normalizeOrders() が
+ * 連番へ振り直すため、この時点での値の大きさ自体には意味はない。
+ * 割り当て可能な有限値を使い切った（nextUp が Infinity になる）敗者は
+ * 重複解消を断念して元の値のまま残る。
+ *
+ * @param orders order文字列の配列
+ * @param priorities 各要素の優先度（未設定/対象外は -1 以下の値にする）
+ */
+export function resolveDuplicateOrders(
+    orders: (string | null | undefined)[],
+    priorities: number[]
+): (string | null | undefined)[] {
+    interface Entry {
+        index: number;
+        parts: number[];
+        parentKey: string;
+        last: number;
+    }
+
+    const entries: Entry[] = [];
+    orders.forEach((o, i) => {
+        if (o == null || o === "") return;
+        const parts = parseOrder(o);
+        if (parts.length === 0) return;
+        // 非有限セグメント（巨大数字列等で parseFloat が Infinity になるケース）は
+        // 重複解消の対象外とする。nextUp(Infinity) が Infinity を返し続けて
+        // 下の while ループが終了しなくなるため
+        if (!parts.every(Number.isFinite)) return;
+        const parentKey = formatOrder(parts.slice(0, -1));
+        entries.push({ index: i, parts, parentKey, last: parts[parts.length - 1]! });
+    });
+
+    // 親ごと（parentKey + last）にグループ化し、重複を検出する
+    const groups = new Map<string, Entry[]>();
+    for (const e of entries) {
+        const key = `${e.parentKey} ${e.last}`;
+        let group = groups.get(key);
+        if (!group) {
+            group = [];
+            groups.set(key, group);
+        }
+        group.push(e);
+    }
+
+    // 親ごとの既存（重複解消前）distinct な last 値（昇順）
+    // 敗者を割り当てる区間の境界に使う
+    const distinctByParent = new Map<string, number[]>();
+    for (const e of entries) {
+        let arr = distinctByParent.get(e.parentKey);
+        if (!arr) {
+            arr = [];
+            distinctByParent.set(e.parentKey, arr);
+        }
+        if (!arr.includes(e.last)) arr.push(e.last);
+    }
+    for (const arr of distinctByParent.values()) {
+        arr.sort((a, b) => a - b);
+    }
+
+    const result = [...orders];
+
+    for (const groupEntries of groups.values()) {
+        if (groupEntries.length <= 1) continue; // 重複なし
+
+        const parentKey = groupEntries[0]!.parentKey;
+        const winnerLast = groupEntries[0]!.last;
+        const sortedDistinct = distinctByParent.get(parentKey)!;
+        const winnerPos = sortedDistinct.indexOf(winnerLast);
+        // 次に大きい既存値（無ければ勝者+1）を上限にして、敗者をその手前に散らす
+        const nextValue =
+            winnerPos + 1 < sortedDistinct.length
+                ? sortedDistinct[winnerPos + 1]!
+                : winnerLast + 1;
+        const gap = nextValue - winnerLast;
+
+        const sorted = [...groupEntries].sort((a, b) => {
+            const pa = priorities[a.index] ?? -1;
+            const pb = priorities[b.index] ?? -1;
+            if (pa !== pb) return pb - pa; // priority高い方が先頭（=元の値を保持）
+            return a.index - b.index; // 同点は元の配列順（安定）
+        });
+
+        const n = sorted.length;
+        let prev = winnerLast;
+        sorted.forEach((e, rank) => {
+            if (rank === 0) return; // 勝者はそのまま
+            let newLast = winnerLast + (gap * rank) / n; // 理想位置: winnerLast < newLast < nextValue
+            // 丸めにより前の割り当て値以下、または既存の単独値と同値になる場合は
+            // 表現可能な次の値へ進めて解消する（高精度 order で gap が ulp 級のケース）
+            while (newLast <= prev || sortedDistinct.includes(newLast)) {
+                const candidate = newLast <= prev ? nextUp(prev) : nextUp(newLast);
+                // nextUp が Infinity を返したら有限値の割り当て可能範囲を使い切った
+                // 状態（winnerLast が Number.MAX_VALUE 近傍）。nextUp(Infinity) は
+                // Infinity を返し続けループが終了しないため、この敗者の重複解消は
+                // 断念して元の値のまま残す（保存のハング防止を優先）
+                if (!Number.isFinite(candidate)) return;
+                newLast = candidate;
+            }
+            prev = newLast;
+            const newParts = [...e.parts];
+            newParts[newParts.length - 1] = newLast;
+            result[e.index] = formatOrder(newParts);
+        });
+    }
+
+    return result;
 }
 
 /**
