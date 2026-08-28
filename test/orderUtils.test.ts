@@ -327,6 +327,35 @@ describe("resolveDuplicateOrders", () => {
         // 勝者(index1)が敗者(index0)より前(小さい)順序になる
         expect(compareOrders(normalized[1], normalized[0])).toBeLessThan(0);
     });
+
+    test("間隔がulp級の高精度orderでも丸めにより重複が残らない", () => {
+        // 1.0000000000000002 は 1 の次の表現可能値で、その間に中間値は存在しない。
+        // 均等分割 1 + 1.11e-16 は 1 へ丸め込まれるため、nextUp 相当の補正が必要。
+        const next = 1.0000000000000002;
+        const input = ["1", "1", String(next)];
+        const priorities = [-1, 5, -1];
+        const resolved = resolveDuplicateOrders(input, priorities);
+        const nonNull = resolved.filter((v): v is string => v != null);
+        expect(new Set(nonNull).size).toBe(nonNull.length); // 出力段階で重複なし
+
+        const normalized = normalizeOrders(resolved);
+        const normalizedNonNull = normalized.filter((v): v is string => v != null);
+        expect(new Set(normalizedNonNull).size).toBe(normalizedNonNull.length);
+        expect(normalized[1]).toBe("1"); // 勝者が1を保持
+    });
+
+    test("間隔がulp級でも敗者が複数なら全員distinctな値に分離される", () => {
+        const next = 1.0000000000000002;
+        const input = ["1", "1", "1", String(next)];
+        const priorities = [-1, 3, 5, -1];
+        const resolved = resolveDuplicateOrders(input, priorities);
+        const nonNull = resolved.filter((v): v is string => v != null);
+        expect(new Set(nonNull).size).toBe(nonNull.length);
+
+        const normalized = normalizeOrders(resolved);
+        const normalizedNonNull = normalized.filter((v): v is string => v != null);
+        expect(new Set(normalizedNonNull)).toEqual(new Set(["1", "2", "3", "4"]));
+    });
 });
 
 describe("sortByOrder", () => {

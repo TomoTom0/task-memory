@@ -245,6 +245,23 @@ describe('tm update argument parsing', () => {
         errorSpy.mockRestore();
     });
 
+    it('不正なorderより前の有効な変更も含めて全体が拒否され、部分適用されない', () => {
+        setupTasks([
+            { id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: '1', priority: 'low' },
+        ]);
+        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
+
+        // --priorityは有効だが、後続の--order abcでコマンド全体が事前拒否される
+        updateCommand(['1', '--priority', 'high', '--order', 'abc']);
+
+        expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid order format'));
+        const tasks = loadTasks();
+        expect(tasks.find(t => t.id === 'TASK-1')!.priority).toBe('low'); // 先の変更は保存されない
+        expect(tasks.find(t => t.id === 'TASK-1')!.order).toBe('1');
+
+        errorSpy.mockRestore();
+    });
+
     it('不正なorderが重複していてもNaNに壊れず、事前バリデーションで弾かれる', () => {
         setupTasks([
             { id: 'TASK-1', status: 'todo', summary: 'A', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '' },

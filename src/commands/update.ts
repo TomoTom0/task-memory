@@ -38,6 +38,7 @@ Options:
     const batchBlocked: boolean[] = [];  // batchIndex -> そのバッチに --status blocked があるか
     let batchCount = 0;
     let malformedGate = false;           // 値なし/不正値の --gate が一つでもあれば全体を拒否
+    let invalidOrder: string | undefined; // フォーマット不正な --order 値（最初のもの）
     {
         let bi = 0;
         let lastOpt = false;
@@ -54,6 +55,10 @@ Options:
                         batchGate[bi] = val;
                     } else {
                         malformedGate = true;
+                    }
+                } else if (a === '--order' || a === '-o') {
+                    if (val && val !== 'null' && !isValidOrderFormat(val)) {
+                        invalidOrder ??= val;
                     }
                 }
                 i++; // 値をスキップ（for の i++ と合わせて2進む）
@@ -72,6 +77,12 @@ Options:
     // --priority 等の変更（あるいは --force による blocked の強制解除）が既に保存されてしまう。
     if (malformedGate) {
         console.error('Error: --gate requires a value.');
+        return;
+    }
+    // フォーマット不正な --order も同様に、コマンド全体を事前拒否する。
+    // 実行ループで break するだけだと、それより前の有効な変更が保存されてしまう。
+    if (invalidOrder !== undefined) {
+        console.error(`Error: Invalid order format '${invalidOrder}'. Expected digits separated by hyphens (e.g. 1, 1-1, 2-3, 1.5).`);
         return;
     }
     // 各バッチのペアリングを検証
@@ -182,12 +193,10 @@ Options:
                     break;
                 case '--order':
                 case '-o':
+                    // フォーマットは pre-scan で検証済み（不正値はコマンド全体を事前拒否）。
+                    // ここでは値を消費して適用するのみ。
                     const order = args[++i];
                     if (order) {
-                        if (order !== 'null' && !isValidOrderFormat(order)) {
-                            console.error(`Error: Invalid order format '${order}'. Expected digits separated by hyphens (e.g. 1, 1-1, 2-3, 1.5).`);
-                            break;
-                        }
                         applyUpdate(t => {
                             // todo, wip のみ order を設定可能
                             if (t.status === 'todo' || t.status === 'wip') {

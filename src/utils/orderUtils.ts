@@ -195,14 +195,32 @@ export function normalizeOrders(
 }
 
 /**
+ * x より大きい最小の表現可能な倍精度浮動小数点数を返す（IEEE 754 の nextUp 相当）。
+ * 非負の有限数であること（order の各セグメントは非負を前提としている）。
+ * 非負の有限数はビットパターンが値の順に単調増加するため、+1 で次の表現可能値になる。
+ */
+function nextUp(x: number): number {
+    if (!Number.isFinite(x)) return x;
+    const buf = new DataView(new ArrayBuffer(8));
+    buf.setFloat64(0, x);
+    buf.setBigUint64(0, buf.getBigUint64(0) + 1n);
+    return buf.getFloat64(0);
+}
+
+/**
  * 同一のorder値を持つ要素を、priorityの高い順に微小な小数値へ分離する。
  * normalizeOrders() に通す前の前処理として使う。
  *
  * priority が高い（数値が大きい）要素ほど「新しく設定された」ことを意味し、
  * その要素は元の値をそのまま保持する（勝者）。他の要素（敗者）は、
  * 同じ親配下で「勝者の値」と「次に大きい既存の値（無ければ勝者+1）」の
- * 間に収まる値へ均等に散らされる。この区間は他の値と重ならないことが
- * 保証されるため、再帰的に重複を生むことがない。
+ * 間に収まる値へ均等に散らされる。
+ *
+ * 浮動小数点の丸めにより均等分割の位置が前の割り当て値（勝者/前の敗者）以下や
+ * 既存の単独値と同値になる場合は、表現可能な次の値（nextUp）へ進めて解消する。
+ * 間隔が ulp 級の高精度 order では敗者が区間上限の既存値を超えて配置される
+ * ことがあるが、distinct 性と相対順序は保たれ、最終的に normalizeOrders() が
+ * 連番へ振り直すため、この時点での値の大きさ自体には意味はない。
  *
  * @param orders order文字列の配列
  * @param priorities 各要素の優先度（未設定/対象外は -1 以下の値にする）
@@ -278,9 +296,16 @@ export function resolveDuplicateOrders(
         });
 
         const n = sorted.length;
+        let prev = winnerLast;
         sorted.forEach((e, rank) => {
             if (rank === 0) return; // 勝者はそのまま
-            const newLast = winnerLast + (gap * rank) / n; // winnerLast < newLast < nextValue
+            let newLast = winnerLast + (gap * rank) / n; // 理想位置: winnerLast < newLast < nextValue
+            // 丸めにより前の割り当て値以下、または既存の単独値と同値になる場合は
+            // 表現可能な次の値へ進めて解消する（高精度 order で gap が ulp 級のケース）
+            while (newLast <= prev || sortedDistinct.includes(newLast)) {
+                newLast = newLast <= prev ? nextUp(prev) : nextUp(newLast);
+            }
+            prev = newLast;
             const newParts = [...e.parts];
             newParts[newParts.length - 1] = newLast;
             result[e.index] = formatOrder(newParts);
