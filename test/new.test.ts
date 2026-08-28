@@ -103,4 +103,27 @@ describe('tm new argument parsing', () => {
         expect(err).toHaveBeenCalled();
         err.mockRestore();
     });
+
+    it('既にorder=1のタスクがいる状態で新規タスクをorder=1で作成すると、新規タスクが1を得て既存タスクが繰り下がる', () => {
+        setupTasks([
+            { id: 'TASK-1', status: 'todo', summary: 'Existing', bodies: [], files: { read: [], edit: [] }, created_at: '', updated_at: '', order: '1' },
+        ]);
+
+        newCommand(['New Task', '--order', '1']);
+
+        const tasks = loadTasks();
+        const newTask = tasks.find(t => t.summary === 'New Task')!;
+        const existing = tasks.find(t => t.summary === 'Existing')!;
+        expect(newTask.order).toBe('1');
+        expect(existing.order).toBe('2');
+    });
+
+    it('不正な形式のorderはエラーになりタスクは作成されない', () => {
+        const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+        newCommand(['Bad Order Task', '--order', 'abc']);
+        const tasks = loadTasks();
+        expect(tasks.length).toBe(0);
+        expect(err).toHaveBeenCalledWith(expect.stringContaining('Invalid order format'));
+        err.mockRestore();
+    });
 });

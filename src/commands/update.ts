@@ -1,6 +1,7 @@
 import { loadTasks, saveTasks, getTaskById, getCurrentCommit } from '../store';
 import type { Task } from '../types';
 import { isTaskStatus, canTransition, blockedExitMessage, TASK_STATUSES } from '../utils/statusGuard';
+import { isValidOrderFormat } from '../utils/orderUtils';
 
 export function updateCommand(args: string[]): void {
     if (args.includes('--help') || args.includes('-h')) {
@@ -92,6 +93,8 @@ Options:
     let updated = false;
     let lastActionWasOption = false;
     let batchIndex = 0;
+    // order を設定したタスクIDを適用順（末尾が最新）で記録する。重複解消で優先される。
+    const orderSetSequence: string[] = [];
 
     // Helper to apply updates to current targets
     const applyUpdate = (action: (task: Task) => boolean | void) => {
@@ -181,10 +184,15 @@ Options:
                 case '-o':
                     const order = args[++i];
                     if (order) {
+                        if (order !== 'null' && !isValidOrderFormat(order)) {
+                            console.error(`Error: Invalid order format '${order}'. Expected digits separated by hyphens (e.g. 1, 1-1, 2-3, 1.5).`);
+                            break;
+                        }
                         applyUpdate(t => {
                             // todo, wip のみ order を設定可能
                             if (t.status === 'todo' || t.status === 'wip') {
                                 t.order = order === 'null' ? null : order;
+                                orderSetSequence.push(t.id);
                             } else {
                                 console.error(`Error: Cannot set order for task with status '${t.status}'. Only todo/wip allowed.`);
                             }
@@ -269,7 +277,7 @@ Options:
     }
 
     if (updated) {
-        saveTasks(tasks);
+        saveTasks(tasks, orderSetSequence);
         console.log('Tasks updated.');
     }
 }

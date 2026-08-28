@@ -3,7 +3,7 @@ import { homedir } from 'os';
 import { existsSync, readFileSync, writeFileSync, statSync } from 'fs';
 import { spawnSync } from 'child_process';
 import type { Task, TaskStore, SyncConfig } from './types';
-import { normalizeOrders } from './utils/orderUtils';
+import { normalizeOrders, resolveDuplicateOrders } from './utils/orderUtils';
 
 let globalMode = false;
 
@@ -124,21 +124,29 @@ export function loadTasks(): Task[] {
 /**
  * タスクの order を正規化する
  * todo, wip のタスクのみを対象とし、それ以外は null にする
+ *
+ * @param recentlySetOrderIds 今回の操作で order を設定したタスクIDの適用順（末尾が最新）。
+ *   重複するorder値がある場合、ここに含まれる（＝より末尾に近い）タスクが優先され、
+ *   他のタスクが繰り下げられる。渡さない場合は、タスク配列内の出現順で決定的に解消される。
  */
-function normalizeTaskOrders(tasks: Task[]): Task[] {
+export function normalizeTaskOrders(tasks: Task[], recentlySetOrderIds: string[] = []): Task[] {
     // todo, wip のタスクのインデックスと order を収集
     const activeIndices: number[] = [];
     const activeOrders: (string | null)[] = [];
+    const activeIds: string[] = [];
 
     tasks.forEach((task, index) => {
         if (task.status === 'todo' || task.status === 'wip') {
             activeIndices.push(index);
             activeOrders.push(task.order ?? null);
+            activeIds.push(task.id);
         }
     });
 
-    // 正規化
-    const normalizedOrders = normalizeOrders(activeOrders);
+    // 同一order値の重複を、適用順が新しい方を優先して微小な値に分離してから正規化する
+    const priorities = activeIds.map((id) => recentlySetOrderIds.lastIndexOf(id));
+    const resolvedOrders = resolveDuplicateOrders(activeOrders, priorities);
+    const normalizedOrders = normalizeOrders(resolvedOrders);
 
     // 結果を反映
     const result = tasks.map((task, index) => {
@@ -158,11 +166,11 @@ function normalizeTaskOrders(tasks: Task[]): Task[] {
     return result;
 }
 
-export function saveTasks(tasks: Task[]): void {
+export function saveTasks(tasks: Task[], recentlySetOrderIds: string[] = []): void {
     // sync設定を保持しつつtasksを更新
     const store = cachedStore || loadStore();
     // order を正規化
-    store.tasks = normalizeTaskOrders(tasks);
+    store.tasks = normalizeTaskOrders(tasks, recentlySetOrderIds);
     saveStore(store);
 }
 

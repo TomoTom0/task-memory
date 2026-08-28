@@ -30,6 +30,18 @@ export function formatOrder(parts: number[]): string {
 }
 
 /**
+ * order 文字列の形式が正しいか検証する
+ * 各セグメントが非負の数値（整数または小数）で、ハイフンで区切られていること
+ * （例: "1", "1-1", "2-3", "1.5", "1-2.5" は有効。"abc", "-1", "1-", "1--2" は無効）
+ *
+ * @param order 検証対象の文字列
+ */
+export function isValidOrderFormat(order: string): boolean {
+    if (!order) return false;
+    return /^\d+(\.\d+)?(-\d+(\.\d+)?)*$/.test(order);
+}
+
+/**
  * order 文字列を比較する
  * null/undefined は後ろに配置される
  *
@@ -180,6 +192,102 @@ export function normalizeOrders(
         if (o == null) return null;
         return normalizedMap.get(index) ?? o;
     });
+}
+
+/**
+ * 同一のorder値を持つ要素を、priorityの高い順に微小な小数値へ分離する。
+ * normalizeOrders() に通す前の前処理として使う。
+ *
+ * priority が高い（数値が大きい）要素ほど「新しく設定された」ことを意味し、
+ * その要素は元の値をそのまま保持する（勝者）。他の要素（敗者）は、
+ * 同じ親配下で「勝者の値」と「次に大きい既存の値（無ければ勝者+1）」の
+ * 間に収まる値へ均等に散らされる。この区間は他の値と重ならないことが
+ * 保証されるため、再帰的に重複を生むことがない。
+ *
+ * @param orders order文字列の配列
+ * @param priorities 各要素の優先度（未設定/対象外は -1 以下の値にする）
+ */
+export function resolveDuplicateOrders(
+    orders: (string | null | undefined)[],
+    priorities: number[]
+): (string | null | undefined)[] {
+    interface Entry {
+        index: number;
+        parts: number[];
+        parentKey: string;
+        last: number;
+    }
+
+    const entries: Entry[] = [];
+    orders.forEach((o, i) => {
+        if (o == null || o === "") return;
+        const parts = parseOrder(o);
+        if (parts.length === 0) return;
+        const parentKey = formatOrder(parts.slice(0, -1));
+        entries.push({ index: i, parts, parentKey, last: parts[parts.length - 1]! });
+    });
+
+    // 親ごと（parentKey + last）にグループ化し、重複を検出する
+    const groups = new Map<string, Entry[]>();
+    for (const e of entries) {
+        const key = `${e.parentKey} ${e.last}`;
+        let group = groups.get(key);
+        if (!group) {
+            group = [];
+            groups.set(key, group);
+        }
+        group.push(e);
+    }
+
+    // 親ごとの既存（重複解消前）distinct な last 値（昇順）
+    // 敗者を割り当てる区間の境界に使う
+    const distinctByParent = new Map<string, number[]>();
+    for (const e of entries) {
+        let arr = distinctByParent.get(e.parentKey);
+        if (!arr) {
+            arr = [];
+            distinctByParent.set(e.parentKey, arr);
+        }
+        if (!arr.includes(e.last)) arr.push(e.last);
+    }
+    for (const arr of distinctByParent.values()) {
+        arr.sort((a, b) => a - b);
+    }
+
+    const result = [...orders];
+
+    for (const groupEntries of groups.values()) {
+        if (groupEntries.length <= 1) continue; // 重複なし
+
+        const parentKey = groupEntries[0]!.parentKey;
+        const winnerLast = groupEntries[0]!.last;
+        const sortedDistinct = distinctByParent.get(parentKey)!;
+        const winnerPos = sortedDistinct.indexOf(winnerLast);
+        // 次に大きい既存値（無ければ勝者+1）を上限にして、敗者をその手前に散らす
+        const nextValue =
+            winnerPos + 1 < sortedDistinct.length
+                ? sortedDistinct[winnerPos + 1]!
+                : winnerLast + 1;
+        const gap = nextValue - winnerLast;
+
+        const sorted = [...groupEntries].sort((a, b) => {
+            const pa = priorities[a.index] ?? -1;
+            const pb = priorities[b.index] ?? -1;
+            if (pa !== pb) return pb - pa; // priority高い方が先頭（=元の値を保持）
+            return a.index - b.index; // 同点は元の配列順（安定）
+        });
+
+        const n = sorted.length;
+        sorted.forEach((e, rank) => {
+            if (rank === 0) return; // 勝者はそのまま
+            const newLast = winnerLast + (gap * rank) / n; // winnerLast < newLast < nextValue
+            const newParts = [...e.parts];
+            newParts[newParts.length - 1] = newLast;
+            result[e.index] = formatOrder(newParts);
+        });
+    }
+
+    return result;
 }
 
 /**

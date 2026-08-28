@@ -1,6 +1,7 @@
 import type { Task, TaskStatus, TaskBody } from '../types';
 import { getCurrentCommit } from '../store';
 import { isTaskStatus, requiresGate, TASK_STATUSES } from './statusGuard';
+import { isValidOrderFormat } from './orderUtils';
 
 export interface TaskBuildOptions {
     summary?: string;
@@ -83,6 +84,9 @@ export function parseTaskArgs(args: string[]): TaskBuildOptions {
                 case '-o':
                     const o = args[i + 1];
                     if (o && !o.startsWith('-')) {
+                        if (o !== 'null' && !isValidOrderFormat(o)) {
+                            throw new Error(`Invalid order format '${o}'. Expected digits separated by hyphens (e.g. 1, 1-1, 2-3, 1.5).`);
+                        }
                         order = o === 'null' ? null : o;
                         i++;
                     } else {
