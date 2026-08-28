@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { syncCommand } from '../src/commands/sync';
 import { saveToSync, pullFromSync, initSyncRepo, getSyncDir, generateSyncId } from '../src/syncStore';
 import { loadStore, saveStore } from '../src/store';
-import type { TaskStore } from '../src/types';
+import type { TaskStore, Task } from '../src/types';
 import { join } from 'path';
 import { existsSync, mkdirSync, rmSync } from 'fs';
 import { createTempProject, removeTempDir } from './helpers';
@@ -167,6 +167,53 @@ describe('syncCommand', () => {
             const store = loadStore();
             expect(store.sync!.id).toBe('new-id');
             expect(store.sync!.auto).toBe(true);
+        });
+    });
+
+    describe('pull', () => {
+        function task(id: string, order: string | null): Task {
+            return {
+                id, status: 'todo', summary: id, bodies: [], files: { read: [], edit: [] },
+                created_at: '2026-01-01T00:00:00.000Z', updated_at: '2026-01-01T00:00:00.000Z', order,
+            };
+        }
+
+        it('マージモード: リモート由来のorder重複が正規化を通って解消される', () => {
+            // ローカルに order=1 のタスクがあり、リモート(sync先)にも別IDで order=1 のタスクがある
+            saveStore({
+                tasks: [task('TASK-1', '1')],
+                sync: { id: 'test-project', enabled: true, auto: false },
+            });
+            const remoteStore: TaskStore = { tasks: [task('TASK-2', '1')] };
+            saveToSync('test-project', remoteStore);
+
+            syncCommand(['pull', '--merge']);
+
+            const store = loadStore();
+            const orders = store.tasks.map(t => t.order).filter((o): o is string => o != null);
+            // 重複が解消され、ユニークな値になっていること
+            expect(new Set(orders).size).toBe(orders.length);
+            expect(orders.length).toBe(2);
+        });
+
+        it('上書きモード: リモートのタスクにorder重複があっても正規化を通る', () => {
+            saveStore({
+                tasks: [task('TASK-1', '1')],
+                sync: { id: 'test-project', enabled: true, auto: false },
+            });
+            // リモート側データ自体に重複が含まれているケース
+            const remoteStore: TaskStore = {
+                tasks: [task('TASK-1', '1'), task('TASK-2', '1')],
+            };
+            saveToSync('test-project', remoteStore);
+
+            syncCommand(['pull']);
+
+            const store = loadStore();
+            const orders = store.tasks.map(t => t.order).filter((o): o is string => o != null);
+            expect(new Set(orders).size).toBe(orders.length);
+            // sync設定(他フィールド)が保持されていること
+            expect(store.sync?.id).toBe('test-project');
         });
     });
 
