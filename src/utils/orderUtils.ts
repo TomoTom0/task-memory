@@ -34,13 +34,21 @@ export function formatOrder(parts: number[]): string {
  * 各セグメントが非負の数値（整数または小数）で、ハイフンで区切られていること
  * （例: "1", "1-1", "2-3", "1.5", "1-2.5" は有効。"abc", "-1", "1-", "1--2" は無効）
  * 桁数が大きすぎて parseFloat が Infinity を返すセグメントも無効とする
+ * Number.MAX_VALUE に等しいセグメントも無効とする（nextUp が Infinity を返し、
+ * 重複解消の割り当てループが停止しなくなるため）
  *
  * @param order 検証対象の文字列
  */
 export function isValidOrderFormat(order: string): boolean {
     if (!order) return false;
     if (!/^\d+(\.\d+)?(-\d+(\.\d+)?)*$/.test(order)) return false;
-    return order.split("-").every((s) => Number.isFinite(parseFloat(s)));
+    return order.split("-").every((s) => {
+        const v = parseFloat(s);
+        // 有限かつ nextUp(v) も有限（= v < Number.MAX_VALUE）であること。
+        // 有限な倍精度浮動小数点数のうち successor が Infinity になるのは
+        // Number.MAX_VALUE のみ（ビットパターン+1 が Infinity になる）
+        return Number.isFinite(v) && v < Number.MAX_VALUE;
+    });
 }
 
 /**
@@ -223,6 +231,8 @@ function nextUp(x: number): number {
  * 間隔が ulp 級の高精度 order では敗者が区間上限の既存値を超えて配置される
  * ことがあるが、distinct 性と相対順序は保たれ、最終的に normalizeOrders() が
  * 連番へ振り直すため、この時点での値の大きさ自体には意味はない。
+ * 割り当て可能な有限値を使い切った（nextUp が Infinity になる）敗者は
+ * 重複解消を断念して元の値のまま残る。
  *
  * @param orders order文字列の配列
  * @param priorities 各要素の優先度（未設定/対象外は -1 以下の値にする）
@@ -309,7 +319,13 @@ export function resolveDuplicateOrders(
             // 丸めにより前の割り当て値以下、または既存の単独値と同値になる場合は
             // 表現可能な次の値へ進めて解消する（高精度 order で gap が ulp 級のケース）
             while (newLast <= prev || sortedDistinct.includes(newLast)) {
-                newLast = newLast <= prev ? nextUp(prev) : nextUp(newLast);
+                const candidate = newLast <= prev ? nextUp(prev) : nextUp(newLast);
+                // nextUp が Infinity を返したら有限値の割り当て可能範囲を使い切った
+                // 状態（winnerLast が Number.MAX_VALUE 近傍）。nextUp(Infinity) は
+                // Infinity を返し続けループが終了しないため、この敗者の重複解消は
+                // 断念して元の値のまま残す（保存のハング防止を優先）
+                if (!Number.isFinite(candidate)) return;
+                newLast = candidate;
             }
             prev = newLast;
             const newParts = [...e.parts];
