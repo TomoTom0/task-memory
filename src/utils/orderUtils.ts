@@ -33,12 +33,14 @@ export function formatOrder(parts: number[]): string {
  * order 文字列の形式が正しいか検証する
  * 各セグメントが非負の数値（整数または小数）で、ハイフンで区切られていること
  * （例: "1", "1-1", "2-3", "1.5", "1-2.5" は有効。"abc", "-1", "1-", "1--2" は無効）
+ * 桁数が大きすぎて parseFloat が Infinity を返すセグメントも無効とする
  *
  * @param order 検証対象の文字列
  */
 export function isValidOrderFormat(order: string): boolean {
     if (!order) return false;
-    return /^\d+(\.\d+)?(-\d+(\.\d+)?)*$/.test(order);
+    if (!/^\d+(\.\d+)?(-\d+(\.\d+)?)*$/.test(order)) return false;
+    return order.split("-").every((s) => Number.isFinite(parseFloat(s)));
 }
 
 /**
@@ -241,6 +243,10 @@ export function resolveDuplicateOrders(
         if (o == null || o === "") return;
         const parts = parseOrder(o);
         if (parts.length === 0) return;
+        // 非有限セグメント（巨大数字列等で parseFloat が Infinity になるケース）は
+        // 重複解消の対象外とする。nextUp(Infinity) が Infinity を返し続けて
+        // 下の while ループが終了しなくなるため
+        if (!parts.every(Number.isFinite)) return;
         const parentKey = formatOrder(parts.slice(0, -1));
         entries.push({ index: i, parts, parentKey, last: parts[parts.length - 1]! });
     });

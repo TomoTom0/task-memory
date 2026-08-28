@@ -76,6 +76,14 @@ describe("isValidOrderFormat", () => {
         expect(isValidOrderFormat(".5")).toBe(false);
         expect(isValidOrderFormat("1.2.3")).toBe(false);
     });
+
+    test("parseFloatがInfinityになる巨大数字列は無効", () => {
+        const huge = "9".repeat(400); // parseFloat(huge) === Infinity
+        expect(isValidOrderFormat(huge)).toBe(false);
+        expect(isValidOrderFormat(`1-${huge}`)).toBe(false);
+        // 通常の桁数の数字列は有効のまま
+        expect(isValidOrderFormat("999999999")).toBe(true);
+    });
 });
 
 describe("formatOrder", () => {
@@ -271,6 +279,20 @@ describe("resolveDuplicateOrders", () => {
         const result = resolveDuplicateOrders(["1", null, "1", undefined], [-1, -1, 5, -1]);
         expect(result[1]).toBeNull();
         expect(result[3]).toBeUndefined();
+    });
+
+    test("非有限セグメント(Infinity)を含むorderは重複解消の対象外になりハングしない", () => {
+        // "9"x400 は parseFloat すると Infinity。重複"1"の次の既存値が
+        // Infinity になると、nextUp(Infinity) が Infinity を返し続けて
+        // while ループが終了しない（保存操作のハング）ため、これを除外する
+        const huge = "9".repeat(400);
+        const input = ["1", "1", huge];
+        const result = resolveDuplicateOrders(input, [-1, 5, -1]);
+        // 巨大数字列のエントリはそのまま、重複"1"は解消される
+        expect(result[2]).toBe(huge);
+        expect(result[1]).toBe("1"); // 勝者
+        expect(Number(result[0])).toBeGreaterThan(1);
+        expect(Number(result[0])).toBeLessThan(2);
     });
 
     test("resolveDuplicateOrders -> normalizeOrders で最終的に重複の無い連番になる(end-to-end)", () => {
