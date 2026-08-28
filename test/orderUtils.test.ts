@@ -76,6 +76,26 @@ describe("isValidOrderFormat", () => {
         expect(isValidOrderFormat(".5")).toBe(false);
         expect(isValidOrderFormat("1.2.3")).toBe(false);
     });
+
+    test("parseFloatがInfinityになる巨大数字列は無効", () => {
+        const huge = "9".repeat(400); // parseFloat(huge) === Infinity
+        expect(isValidOrderFormat(huge)).toBe(false);
+        expect(isValidOrderFormat(`1-${huge}`)).toBe(false);
+        // 通常の桁数の数字列は有効のまま
+        expect(isValidOrderFormat("999999999")).toBe(true);
+    });
+
+    test("Number.MAX_VALUEに等しいセグメントは無効(次の表現可能値がInfinity)", () => {
+        // 17976931348623157e292 は parseFloat すると Number.MAX_VALUE。
+        // 有限だが nextUp(MAX_VALUE) は Infinity を返し、重複解消の
+        // 割り当てループが停止しななくなるため無効とする
+        const maxValueDigits = "17976931348623157" + "0".repeat(292);
+        expect(parseFloat(maxValueDigits)).toBe(Number.MAX_VALUE);
+        expect(isValidOrderFormat(maxValueDigits)).toBe(false);
+        expect(isValidOrderFormat(`1-${maxValueDigits}`)).toBe(false);
+        // MAX_VALUE 未満の巨大値は有効のまま
+        expect(isValidOrderFormat("1" + "0".repeat(308))).toBe(true); // 1e308
+    });
 });
 
 describe("formatOrder", () => {
@@ -271,6 +291,34 @@ describe("resolveDuplicateOrders", () => {
         const result = resolveDuplicateOrders(["1", null, "1", undefined], [-1, -1, 5, -1]);
         expect(result[1]).toBeNull();
         expect(result[3]).toBeUndefined();
+    });
+
+    test("非有限セグメント(Infinity)を含むorderは重複解消の対象外になりハングしない", () => {
+        // "9"x400 は parseFloat すると Infinity。重複"1"の次の既存値が
+        // Infinity になると、nextUp(Infinity) が Infinity を返し続けて
+        // while ループが終了しない（保存操作のハング）ため、これを除外する
+        const huge = "9".repeat(400);
+        const input = ["1", "1", huge];
+        const result = resolveDuplicateOrders(input, [-1, 5, -1]);
+        // 巨大数字列のエントリはそのまま、重複"1"は解消される
+        expect(result[2]).toBe(huge);
+        expect(result[1]).toBe("1"); // 勝者
+        expect(Number(result[0])).toBeGreaterThan(1);
+        expect(Number(result[0])).toBeLessThan(2);
+    });
+
+    test("successorがInfinityになる値(MAX_VALUE)の重複は解消を断念してハングしない", () => {
+        // Number.MAX_VALUE は有限のため、入力検証を通過した既存データ・
+        // インポート経由で入りうる値。winnerLast + 1 が丸めで winnerLast の
+        // ままになり、敗者の割り当てが nextUp(MAX_VALUE) = Infinity に到達、
+        // 以降 nextUp(Infinity) が Infinity を返し続けて永久ループする。
+        // 割り当て可能な有限値の枯渇は断念（元の値のまま）で打ち切る
+        const maxValueDigits = "17976931348623157" + "0".repeat(292);
+        const input = [maxValueDigits, maxValueDigits, maxValueDigits];
+        const result = resolveDuplicateOrders(input, [-1, 5, -1]);
+        // 割り当てられない敗者は元の値のまま（Infinity を含む order は生成されない）
+        expect(result).toEqual(input);
+        expect(result.every((o) => o == null || !o.includes("Infinity"))).toBe(true);
     });
 
     test("resolveDuplicateOrders -> normalizeOrders で最終的に重複の無い連番になる(end-to-end)", () => {
