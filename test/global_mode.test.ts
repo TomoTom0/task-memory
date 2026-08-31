@@ -7,15 +7,14 @@ describe('global mode', () => {
     const origArgv = process.argv;
     const origCwd = process.cwd;
     const origEnv = process.env;
-    // findGitPathの遡上はhomeで停止するため、home直下のsandboxは
+    // findGitPathの遡上はhomeで停止するため、home直下のパスは
     // /tmp/.git 等の環境汚染の影響を受けず確実に非gitになる
     const homeIsGitRepo = existsSync(join(homedir(), '.git'));
-    const nonGitSandboxes: string[] = [];
 
     function useNonGitCwd(): void {
+        // findGitPathはexistsSyncの存在チェックのみでcwdの実在を要求しないため、
+        // 読み取り専用home環境でも失敗しないよう実在しないパスを返す
         const sandbox = join(homedir(), '.tm-test-nongit-' + Date.now());
-        mkdirSync(sandbox, { recursive: true });
-        nonGitSandboxes.push(sandbox);
         Object.defineProperty(process, 'cwd', {
             value: () => sandbox,
             configurable: true,
@@ -31,10 +30,6 @@ describe('global mode', () => {
         process.argv = origArgv;
         Object.defineProperty(process, 'cwd', { value: origCwd, configurable: true });
         process.env = { ...origEnv };
-        for (const sandbox of nonGitSandboxes) {
-            try { rmSync(sandbox, { recursive: true }); } catch { }
-        }
-        nonGitSandboxes.length = 0;
     });
 
     describe('getDbPath', () => {
