@@ -7,6 +7,20 @@ describe('global mode', () => {
     const origArgv = process.argv;
     const origCwd = process.cwd;
     const origEnv = process.env;
+    // findGitPathの遡上はhomeで停止するため、home直下のsandboxは
+    // /tmp/.git 等の環境汚染の影響を受けず確実に非gitになる
+    const homeIsGitRepo = existsSync(join(homedir(), '.git'));
+    const nonGitSandboxes: string[] = [];
+
+    function useNonGitCwd(): void {
+        const sandbox = join(homedir(), '.tm-test-nongit-' + Date.now());
+        mkdirSync(sandbox, { recursive: true });
+        nonGitSandboxes.push(sandbox);
+        Object.defineProperty(process, 'cwd', {
+            value: () => sandbox,
+            configurable: true,
+        });
+    }
 
     beforeEach(async () => {
         process.argv = [...origArgv];
@@ -17,15 +31,15 @@ describe('global mode', () => {
         process.argv = origArgv;
         Object.defineProperty(process, 'cwd', { value: origCwd, configurable: true });
         process.env = { ...origEnv };
+        for (const sandbox of nonGitSandboxes) {
+            try { rmSync(sandbox, { recursive: true }); } catch { }
+        }
+        nonGitSandboxes.length = 0;
     });
 
     describe('getDbPath', () => {
-        it('should throw NotGitError when not in git repo without --global', async () => {
-            // Use /tmp which is unlikely to be in a git repo
-            Object.defineProperty(process, 'cwd', {
-                value: () => '/tmp/tm-test-nongit-' + Date.now(),
-                configurable: true,
-            });
+        it.skipIf(homeIsGitRepo)('should throw NotGitError when not in git repo without --global', async () => {
+            useNonGitCwd();
 
             const { getDbPath, NotGitError } = await import('../src/store');
             expect(() => getDbPath()).toThrow(NotGitError);
@@ -33,10 +47,7 @@ describe('global mode', () => {
         });
 
         it('should return home path when --global is set and not in git repo', async () => {
-            Object.defineProperty(process, 'cwd', {
-                value: () => '/tmp/tm-test-nongit-' + Date.now(),
-                configurable: true,
-            });
+            useNonGitCwd();
 
             const { getDbPath, setGlobalMode } = await import('../src/store');
             setGlobalMode(true);
@@ -62,11 +73,8 @@ describe('global mode', () => {
     });
 
     describe('getReviewDbPath', () => {
-        it('should throw NotGitError when not in git repo without --global', async () => {
-            Object.defineProperty(process, 'cwd', {
-                value: () => '/tmp/tm-test-nongit-' + Date.now(),
-                configurable: true,
-            });
+        it.skipIf(homeIsGitRepo)('should throw NotGitError when not in git repo without --global', async () => {
+            useNonGitCwd();
 
             const { getReviewDbPath } = await import('../src/reviewStore');
             const { NotGitError } = await import('../src/store');
@@ -74,10 +82,7 @@ describe('global mode', () => {
         });
 
         it('should return home path when --global is set and not in git repo', async () => {
-            Object.defineProperty(process, 'cwd', {
-                value: () => '/tmp/tm-test-nongit-' + Date.now(),
-                configurable: true,
-            });
+            useNonGitCwd();
 
             const { setGlobalMode } = await import('../src/store');
             setGlobalMode(true);
@@ -116,10 +121,7 @@ describe('global mode', () => {
 
             process.env.CODING_AGENT_ROOT = agentRoot;
             // cwd is non-git, but CODING_AGENT_ROOT overrides it
-            Object.defineProperty(process, 'cwd', {
-                value: () => '/tmp/tm-test-nongit-' + Date.now(),
-                configurable: true,
-            });
+            useNonGitCwd();
 
             const { getDbPath } = await import('../src/store');
             const result = getDbPath();
@@ -133,10 +135,7 @@ describe('global mode', () => {
             mkdirSync(agentRoot, { recursive: true });
 
             process.env.CODING_AGENT_ROOT = agentRoot;
-            Object.defineProperty(process, 'cwd', {
-                value: () => '/tmp/tm-test-nongit-' + Date.now(),
-                configurable: true,
-            });
+            useNonGitCwd();
 
             const { getDbPath, NotGitError } = await import('../src/store');
             expect(() => getDbPath()).toThrow(NotGitError);
