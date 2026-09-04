@@ -9,6 +9,15 @@ import {
     getSyncDir,
     runGitCommand,
     runGitCommandCapture,
+    getSyncDirState,
+    getSyncRemoteUrl,
+    isSafeGitUrl,
+    isValidSyncId,
+    hasSyncProject,
+    hasSyncCommits,
+    cloneSyncRepo,
+    ensureProjectsDir,
+    adoptRemoteIntoEmptyRepo,
 } from '../syncStore';
 import type { SyncConfig, Task } from '../types';
 
@@ -46,27 +55,160 @@ function ensureInitialized(): boolean {
     return initSyncRepo();
 }
 
-function handleAdd(options: Record<string, string | boolean>): void {
+// remote接続（handleAdd / handleSet共通）直後の自動adopt。既にcommitがあれば何もしない。
+function applyAutoAdopt(): void {
+    if (hasSyncCommits()) {
+        return;
+    }
+    const result = adoptRemoteIntoEmptyRepo();
+    switch (result.kind) {
+        case 'adopted':
+            console.log(`Adopted existing data from remote. (branch: ${result.branch})`);
+            break;
+        case 'remote-empty':
+            console.log('Remote repository has no commits yet. Run "tm sync push" to publish local data.');
+            break;
+        case 'fetch-failed':
+            console.error('Failed to fetch from remote.');
+            console.error(result.stderr);
+            process.exit(1);
+            break;
+        case 'checkout-failed':
+            console.error('Local files conflict with the remote content and could not be adopted automatically.');
+            console.error(result.stderr);
+            console.error(`Resolve manually in ${getSyncDir()}, then run "tm sync pull".`);
+            process.exit(1);
+            break;
+    }
+}
+
+function handleClone(positional: string[]): void {
+    const url = positional[0];
+    if (url === undefined) {
+        console.error('Usage: tm sync clone <url>');
+        process.exit(1);
+    }
+    if (!isSafeGitUrl(url)) {
+        console.error(`Invalid remote URL: "${url}" (must not start with "-").`);
+        process.exit(1);
+    }
+
+    const state = getSyncDirState();
+    if (state === 'initialized') {
+        console.error(`Sync repository already exists at: ${getSyncDir()}`);
+        console.error('To change the remote URL, run: tm sync set --remote <url>');
+        process.exit(1);
+    }
+    if (state === 'not-git') {
+        console.error(`Directory exists but is not a git repository: ${getSyncDir()}`);
+        console.error('Remove or rename it, then run "tm sync clone <url>" again.');
+        process.exit(1);
+    }
+
+    const cloneStatus = cloneSyncRepo(url);
+    if (cloneStatus !== 0) {
+        console.error('Failed to clone sync repository.');
+        process.exit(1);
+    }
+    ensureProjectsDir();
+
+    console.log(`Cloned sync repository to: ${getSyncDir()}`);
+    console.log('');
+    const projects = listSyncedProjects();
+    if (projects.length > 0) {
+        console.log('Synced projects:');
+        for (const p of projects) {
+            console.log(`  - ${p}`);
+        }
+    } else {
+        console.log('No projects found in the repository.');
+    }
+    console.log('');
+    console.log('Next steps:');
+    console.log('  tm sync add --id <name>   Register the current project');
+    console.log('  tm sync pull              Pull tasks for this project');
+}
+
+function handleAdd(positional: string[], options: Record<string, string | boolean>): void {
+    // --- 検証フェーズ（副作用なし） ---
+    if (positional.length > 0) {
+        console.error(`Unexpected argument: ${positional[0]}`);
+        console.error('Usage: tm sync add [--id <name>] [--save] [--remote <url>]');
+        process.exit(1);
+    }
+    const allowedKeys = new Set(['id', 'save', 'remote']);
+    for (const key of Object.keys(options)) {
+        if (!allowedKeys.has(key)) {
+            console.error(`Unknown option: --${key}`);
+            console.error('Usage: tm sync add [--id <name>] [--save] [--remote <url>]');
+            process.exit(1);
+        }
+    }
+    if (options.id === true) {
+        console.error('Usage: tm sync add [--id <name>] [--save] [--remote <url>]');
+        process.exit(1);
+    }
+    if (typeof options.id === 'string' && !isValidSyncId(options.id)) {
+        console.error(`Invalid sync id: "${options.id}". Use only letters, digits, ".", "_", "-".`);
+        process.exit(1);
+    }
+    if (options.remote === true) {
+        console.error('Usage: tm sync add [--id <name>] [--save] [--remote <url>]');
+        process.exit(1);
+    }
+    if (typeof options.remote === 'string' && !isSafeGitUrl(options.remote)) {
+        console.error(`Invalid remote URL: "${options.remote}" (must not start with "-").`);
+        process.exit(1);
+    }
+
+    // --- 実行フェーズ ---
     if (!ensureInitialized()) {
         console.error('Failed to initialize sync repository');
         process.exit(1);
     }
 
     const existingConfig = loadSyncConfig();
-    if (existingConfig?.enabled) {
-        console.log(`Already added to sync with id: ${existingConfig.id}`);
-        return;
+    const alreadyAdded = existingConfig?.enabled === true;
+    let syncId = existingConfig?.id ?? '';
+
+    if (!alreadyAdded) {
+        syncId = (typeof options.id === 'string' ? options.id : null) || generateSyncId();
+        if (!isValidSyncId(syncId)) {
+            console.error(`Auto-generated sync id "${syncId}" is invalid (derived from the directory/repo name).`);
+            console.error('Run again with an explicit --id <name> (letters, digits, ".", "_", "-" only).');
+            process.exit(1);
+        }
+        // configを先に保存する: applyAutoAdopt()がfetch-failed/checkout-failedでexitしても
+        // sync登録自体は成立させ、後続の「Not synced」ガードでpull/pushが復旧不能にならないようにする
+        saveSyncConfig({ id: syncId, enabled: true, auto: false });
+        console.log(`Added to sync with id: ${syncId}`);
     }
 
-    const syncId = (typeof options.id === 'string' ? options.id : null) || generateSyncId();
-    const syncConfig: SyncConfig = {
-        id: syncId,
-        enabled: true,
-        auto: false,
-    };
+    if (typeof options.remote === 'string') {
+        const url = options.remote;
+        const current = getSyncRemoteUrl();
+        if (current === null) {
+            const result = runGitCommandCapture(['remote', 'add', 'origin', url]);
+            if (result.status !== 0) {
+                console.error('Failed to set remote origin.');
+                console.error(result.stderr);
+                process.exit(1);
+            }
+            console.log(`Remote origin set to: ${url}`);
+            applyAutoAdopt();
+        } else if (current === url) {
+            console.log(`Remote origin already set to: ${url}`);
+            applyAutoAdopt();
+        } else {
+            console.error(`Warning: remote origin is already set to: ${current}. Not overwriting.`);
+            console.error('Run "tm sync set --remote <url>" to change it.');
+        }
+    }
 
-    saveSyncConfig(syncConfig);
-    console.log(`Added to sync with id: ${syncId}`);
+    if (alreadyAdded) {
+        console.log(`Already added to sync with id: ${syncId}`);
+        return;
+    }
 
     // --save オプションがある場合は即座にsave
     if (options.save) {
@@ -115,6 +257,13 @@ function handlePush(): void {
         process.exit(1);
     }
 
+    const remoteUrl = getSyncRemoteUrl();
+    if (remoteUrl === null) {
+        console.error('Remote origin is not configured.');
+        console.error('Run "tm sync add --remote <url>" or "tm sync set --remote <url>" to configure it.');
+        process.exit(1);
+    }
+
     // save
     const store = loadStore();
     if (!saveToSync(syncConfig.id, store)) {
@@ -123,7 +272,11 @@ function handlePush(): void {
     console.log(`Saved. (id: ${syncConfig.id})`);
 
     // git add
-    runGitCommand(['add', '.']);
+    const addStatus = runGitCommand(['add', '.']);
+    if (addStatus !== 0) {
+        console.error('Failed to stage changes.');
+        process.exit(1);
+    }
 
     // git commit
     const now = new Date();
@@ -155,6 +308,20 @@ function handlePull(options: Record<string, string | boolean>): void {
     const syncConfig = loadSyncConfig();
     if (!syncConfig?.enabled) {
         console.error('Not synced. Run "tm sync add" first.');
+        process.exit(1);
+    }
+
+    if (!isSyncInitialized()) {
+        console.error('Sync repository is not initialized on this machine.');
+        console.error('If you have a remote sync repository, run: tm sync clone <url>');
+        console.error('Otherwise, run: tm sync add --save to start a new one.');
+        process.exit(1);
+    }
+
+    const remoteUrl = getSyncRemoteUrl();
+    if (remoteUrl === null && !hasSyncProject(syncConfig.id)) {
+        console.error(`No remote is configured and no local data exists for project "${syncConfig.id}".`);
+        console.error('Run "tm sync set --remote <url>" to connect a remote repository, then "tm sync pull".');
         process.exit(1);
     }
 
@@ -215,36 +382,101 @@ function handlePull(options: Record<string, string | boolean>): void {
 }
 
 function handleSet(positional: string[], options: Record<string, string | boolean>): void {
+    // --- 検証フェーズ（副作用なし） ---
+    const allowedKeys = new Set(['id', 'remote']);
+    for (const key of Object.keys(options)) {
+        if (!allowedKeys.has(key)) {
+            console.error(`Unknown option: --${key}`);
+            console.error('Usage: tm sync set [--id <name>] [--remote <url>] [auto|manual]');
+            process.exit(1);
+        }
+    }
+    if (positional.length > 1) {
+        console.error('Usage: tm sync set [--id <name>] [--remote <url>] [auto|manual]');
+        process.exit(1);
+    }
+
+    if (options.remote === true) {
+        console.error('Usage: tm sync set [--id <name>] [--remote <url>] [auto|manual]');
+        process.exit(1);
+    }
+    const remoteUrl = typeof options.remote === 'string' ? options.remote : null;
+    if (remoteUrl !== null && !isSafeGitUrl(remoteUrl)) {
+        console.error(`Invalid remote URL: "${remoteUrl}" (must not start with "-").`);
+        process.exit(1);
+    }
+
+    if (options.id === true) {
+        console.error('Usage: tm sync set [--id <name>] [--remote <url>] [auto|manual]');
+        process.exit(1);
+    }
+    if (typeof options.id === 'string' && !isValidSyncId(options.id)) {
+        console.error(`Invalid sync id: "${options.id}". Use only letters, digits, ".", "_", "-".`);
+        process.exit(1);
+    }
+
+    const mode = positional[0];
+    if (mode !== undefined && mode !== 'auto' && mode !== 'manual') {
+        console.error('Usage: tm sync set [--id <name>] [--remote <url>] [auto|manual]');
+        process.exit(1);
+    }
+
+    const hasIdOrMode = typeof options.id === 'string' || mode === 'auto' || mode === 'manual';
     const syncConfig = loadSyncConfig();
-    if (!syncConfig?.enabled) {
+    if (remoteUrl === null && !hasIdOrMode) {
+        // 引数無しの呼び出しは、未同期プロジェクトでは従来どおり"Not synced"を案内する
+        // （コードレビュー指摘対応: 検証フェーズ先行化で汎用usageに変わっていた回帰）
+        if (!syncConfig?.enabled) {
+            console.error('Not synced. Run "tm sync add" first.');
+        } else {
+            console.error('Usage: tm sync set [--id <name>] [--remote <url>] [auto|manual]');
+        }
+        process.exit(1);
+    }
+
+    if (hasIdOrMode && !syncConfig?.enabled) {
         console.error('Not synced. Run "tm sync add" first.');
         process.exit(1);
     }
 
-    let changed = false;
-
-    if (typeof options.id === 'string') {
-        syncConfig.id = options.id;
-        changed = true;
-        console.log(`Sync ID set to: ${options.id}`);
+    // --- 実行フェーズ ---
+    if (remoteUrl !== null) {
+        if (!ensureInitialized()) {
+            console.error('Failed to initialize sync repository');
+            process.exit(1);
+        }
+        const current = getSyncRemoteUrl();
+        if (current === null) {
+            const result = runGitCommandCapture(['remote', 'add', 'origin', remoteUrl]);
+            if (result.status !== 0) {
+                console.error('Failed to set remote origin.');
+                console.error(result.stderr);
+                process.exit(1);
+            }
+            console.log(`Remote origin set to: ${remoteUrl}`);
+        } else {
+            const result = runGitCommandCapture(['remote', 'set-url', 'origin', remoteUrl]);
+            if (result.status !== 0) {
+                console.error('Failed to update remote origin.');
+                console.error(result.stderr);
+                process.exit(1);
+            }
+            console.log(`Remote origin changed: ${current} -> ${remoteUrl}`);
+        }
+        applyAutoAdopt();
     }
 
-    const mode = positional[0];
-    if (mode === 'auto' || mode === 'manual') {
-        syncConfig.auto = mode === 'auto';
-        changed = true;
-        console.log(`Sync mode set to: ${mode}`);
-    } else if (mode !== undefined) {
-        console.error('Usage: tm sync set [--id <name>] [auto|manual]');
-        process.exit(1);
+    if (hasIdOrMode && syncConfig) {
+        if (typeof options.id === 'string') {
+            syncConfig.id = options.id;
+            console.log(`Sync ID set to: ${options.id}`);
+        }
+        if (mode === 'auto' || mode === 'manual') {
+            syncConfig.auto = mode === 'auto';
+            console.log(`Sync mode set to: ${mode}`);
+        }
+        saveSyncConfig(syncConfig);
     }
-
-    if (!changed) {
-        console.error('Usage: tm sync set [--id <name>] [auto|manual]');
-        process.exit(1);
-    }
-
-    saveSyncConfig(syncConfig);
 }
 
 function handleStatus(): void {
@@ -253,6 +485,7 @@ function handleStatus(): void {
     console.log('=== Sync Status ===');
     console.log(`Sync Directory: ${getSyncDir()}`);
     console.log(`Initialized: ${isSyncInitialized() ? 'Yes' : 'No'}`);
+    console.log(`Remote: ${getSyncRemoteUrl() ?? 'Not configured'}`);
     console.log('');
 
     if (syncConfig) {
@@ -292,23 +525,24 @@ function showHelp(): void {
 Usage: tm sync <subcommand> [options]
 
 Subcommands:
-  add [--id <name>] [--save]
+  clone <url>             Clone a remote sync repository to ~/.local/task-memory
+  add [--id <name>] [--save] [--remote <url>]
                           Add current project to sync
   remove                  Remove current project from sync
   save                    Save tasks to sync directory
   push                    Push sync directory to remote
   pull [--merge]          Pull tasks from sync repository
-  set [--id <name>] [auto|manual]
-                          Set sync ID and/or mode
+  set [--id <name>] [--remote <url>] [auto|manual]
+                          Set sync ID, remote URL, and/or mode
   status                  Show sync status
   list                    List synced projects
 
 Examples:
-  tm sync add --id my-project --save
-  tm sync save
+  tm sync clone https://github.com/user/task-memory-sync.git
+  tm sync add --id my-project --save --remote https://github.com/user/task-memory-sync.git
   tm sync push
   tm sync pull --merge
-  tm sync set auto
+  tm sync set --remote https://github.com/user/task-memory-sync.git
     `);
 }
 
@@ -316,8 +550,11 @@ export function syncCommand(args: string[]): void {
     const { subcommand, options, positional } = parseArgs(args);
 
     switch (subcommand) {
+        case 'clone':
+            handleClone(positional);
+            break;
         case 'add':
-            handleAdd(options);
+            handleAdd(positional, options);
             break;
         case 'remove':
         case 'rm':

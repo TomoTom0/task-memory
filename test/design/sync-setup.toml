@@ -1,0 +1,529 @@
+# 経緯・詳細: TASK-12「tm syncの別PC初回セットアップから手動git cloneを排除」
+# 出典: docs/design/sync-setup.md（4サイクルのcodexレビューを経て確定済み、2026-09-04時点）
+# 実装・テストコード執筆済み。/code-review high指摘対応（handleAddの保存順序、isSafeGitUrlのremote helper拒否、
+# branch名検証、handleSetのNot synced回帰）を反映済み。pnpm test 263件全PASS・verify-conditions.py PASSを確認済み
+[meta]
+feature = "sync-setup"
+source_file = "src/syncStore.ts"
+verified = true
+verified_at = "2026-09-04"
+verified_by = "claude"
+test_command = "pnpm test"
+source_hash = "49dd2ccfc4188727bb7a47502beb2ce0cfc9ee30"
+note = "条件はdocs/design/sync-setup.md「テスト設計」節（テスト観点1-29、枝番含む）+コードレビュー指摘対応4件を出典として走査。verified=falseは0件"
+
+# --- tm sync clone ---
+
+[[condition]]
+id = "sync-clone.success"
+target_function = "handleClone"
+source = "docs/design/sync-setup.md handleClone（新規）節 テスト観点1"
+source_lines = "test/sync.test.ts:371"
+description = "bare remoteにprojects/foo.jsonがcommit済みの状態でcloneが成功する"
+given = "syncCommand(['clone', remotePath])。remotePathはprojects/foo.jsonをcommit済みのbare remote。HOME差し替えにより~/.local自体が存在しない状態"
+expect_return_shape = ".gitとprojects/foo.jsonが生成され、getSyncRemoteUrl() === remotePath。標準出力に'Cloned sync repository to:'/'Synced projects:'/'  - foo'/'Next steps:'を含む"
+
+[[condition]]
+id = "sync-clone.no-url"
+target_function = "handleClone"
+source = "docs/design/sync-setup.md handleClone（新規）節 テスト観点2"
+source_lines = "test/sync.test.ts:387"
+description = "URL未指定はusageエラーで終了する"
+given = "syncCommand(['clone'])"
+expect_return_shape = "exit 1、標準エラーに'Usage: tm sync clone <url>'"
+
+[[condition]]
+id = "sync-clone.invalid-url-dash"
+target_function = "handleClone"
+source = "docs/design/sync-setup.md handleClone（新規）節 テスト観点2a"
+source_lines = "test/sync.test.ts:393"
+description = "単一'-'始まりのURLはオプション注入対策として拒否する"
+given = "syncCommand(['clone', '-oProxyCommand=touch /tmp/pwned'])"
+expect_return_shape = "exit 1、'Invalid remote URL:'を含む。~/.local/task-memoryが作成されないこと（cloneが実行されない）"
+
+[[condition]]
+id = "sync-clone.dashdash-value-absorbed"
+target_function = "handleClone"
+source = "docs/design/sync-setup.md handleClone（新規）節 テスト観点2b"
+source_lines = "test/sync.test.ts:399"
+description = "'--'始まりの値はparseArgsの構造上optionとして吸収され、positional[0]がundefinedになるため'URLなし'側のエラーになる"
+given = "syncCommand(['clone', '--upload-pack=touch /tmp/pwned'])"
+expect_return_shape = "exit 1、'Usage: tm sync clone <url>'（'Invalid remote URL:'にはならないことの回帰確認）"
+
+[[condition]]
+id = "sync-clone.already-initialized"
+target_function = "handleClone"
+source = "docs/design/sync-setup.md handleClone（新規）節 テスト観点3"
+source_lines = "test/sync.test.ts:406"
+description = "sync repo初期化済みの状態でのcloneはset --remoteへ誘導して終了する"
+given = "initSyncRepo()実行後にsyncCommand(['clone', url])"
+expect_return_shape = "exit 1、'Sync repository already exists at:'と'tm sync set --remote <url>'のガイドを含む。originは変化しない"
+
+[[condition]]
+id = "sync-clone.dir-exists-not-git"
+target_function = "handleClone"
+source = "docs/design/sync-setup.md handleClone（新規）節 テスト観点4"
+source_lines = "test/sync.test.ts:415"
+description = "SYNC_DIRが存在するが.gitが無い場合は非git状態として拒否する"
+given = "~/.local/task-memoryを.git無しで作成した状態でsyncCommand(['clone', url])"
+expect_return_shape = "exit 1、'not a git repository'を含むメッセージ"
+
+[[condition]]
+id = "sync-clone.clone-fails"
+target_function = "handleClone / cloneSyncRepo"
+source = "docs/design/sync-setup.md handleClone（新規）節 テスト観点5"
+source_lines = "test/sync.test.ts:422"
+description = "git clone自体が失敗した場合はexit 1で終了する"
+given = "存在しないパスをurlに指定してsyncCommand(['clone', url])"
+expect_return_shape = "exit 1、'Failed to clone sync repository.'"
+
+# --- tm sync add --remote ---
+
+[[condition]]
+id = "sync-add.remote-unset-to-set"
+target_function = "handleAdd"
+source = "docs/design/sync-setup.md handleAdd の変更節 テスト観点6"
+source_lines = "test/sync.test.ts:434"
+description = "origin未設定の状態でadd --remoteを指定するとoriginが設定される"
+given = "syncCommand(['add', '--id', 'x', '--remote', url])、事前にorigin未設定"
+expect_return_shape = "getSyncRemoteUrl() === url、ログに'Remote origin set to: <url>'。store.syncも通常どおり設定される"
+
+[[condition]]
+id = "sync-add.remote-different-warns"
+target_function = "handleAdd"
+source = "docs/design/sync-setup.md handleAdd の変更節 テスト観点7"
+source_lines = "test/sync.test.ts:443"
+description = "既に別URLがorigin設定済みの場合は上書きせず警告する"
+given = "先にremote addした状態でsyncCommand(['add', '--id', 'x', '--remote', 別url])"
+expect_return_shape = "標準エラーに'Warning: remote origin is already set to:'と'Run \"tm sync set --remote <url>\" to change it.'の2行。originは不変"
+
+[[condition]]
+id = "sync-add.remote-same-info"
+target_function = "handleAdd"
+source = "docs/design/sync-setup.md handleAdd の変更節 テスト観点8"
+source_lines = "test/sync.test.ts:453"
+description = "同一URLが既に設定済みの場合は情報メッセージのみでexitしない"
+given = "同一urlが既に設定済みの状態でsyncCommand(['add', '--id', 'x', '--remote', url])"
+expect_return_shape = "'Remote origin already set to: <url>'の情報メッセージ、exitしない"
+
+[[condition]]
+id = "sync-add.remote-flag-no-value"
+target_function = "handleAdd"
+source = "docs/design/sync-setup.md handleAdd の変更節 テスト観点9"
+source_lines = "test/sync.test.ts:461"
+description = "値なし--remoteはusageエラーで終了する"
+given = "syncCommand(['add', '--remote'])"
+expect_return_shape = "exit 1、usageメッセージ"
+
+[[condition]]
+id = "sync-add.no-remote-regression"
+target_function = "handleAdd"
+source = "docs/design/sync-setup.md handleAdd の変更節 テスト観点10"
+source_lines = "test/sync.test.ts:466"
+description = "--remoteを指定しないaddは従来どおりoriginに触れない"
+given = "syncCommand(['add', '--id', 'x', '--save'])"
+expect_return_shape = "getSyncRemoteUrl() === null（originが設定されない）"
+
+[[condition]]
+id = "sync-add.invalid-id"
+target_function = "handleAdd"
+source = "docs/design/sync-setup.md handleAdd の変更節 テスト観点10a"
+source_lines = "test/sync.test.ts:471"
+description = "パストラバーサルを含む--idは検証フェーズで拒否し、副作用を起こさない"
+given = "syncCommand(['add', '--id', '../../evil'])"
+expect_return_shape = "exit 1、'Invalid sync id:'を含む。getProjectFilePathが呼ばれない（ファイル未作成で確認）"
+
+[[condition]]
+id = "sync-add.invalid-remote-url-dash"
+target_function = "handleAdd"
+source = "docs/design/sync-setup.md handleAdd の変更節 テスト観点10b"
+source_lines = "test/sync.test.ts:478"
+description = "単一'-'始まりの--remoteはオプション注入対策として拒否し、git remoteを実行しない"
+given = "syncCommand(['add', '--id', 'x', '--remote', '-oProxyCommand=touch /tmp/pwned'])"
+expect_return_shape = "exit 1、'Invalid remote URL:'を含む。getSyncRemoteUrl() === null"
+
+[[condition]]
+id = "sync-add.id-flag-no-value"
+target_function = "handleAdd"
+source = "docs/design/sync-setup.md handleAdd の変更節 テスト観点10c"
+source_lines = "test/sync.test.ts:485"
+description = "値なし--idは検証フェーズ（ensureInitializedより前）で拒否され副作用が起きない"
+given = "syncCommand(['add', '--id'])"
+expect_return_shape = "exit 1、usage。initSyncRepo()等の副作用が起きないこと"
+
+[[condition]]
+id = "sync-add.unknown-option"
+target_function = "handleAdd"
+source = "docs/design/sync-setup.md handleAdd の変更節 テスト観点10d"
+source_lines = "test/sync.test.ts:491"
+description = "未知オプションは検証フェーズで拒否し、config保存等の副作用を起こさない"
+given = "syncCommand(['add', '--id', 'x', '--unknown', 'y'])"
+expect_return_shape = "exit 1、'Unknown option: --unknown'。config保存等の副作用が起きないこと"
+
+[[condition]]
+id = "sync-add.remote-dashdash-value-unknown-option"
+target_function = "handleAdd"
+source = "docs/design/sync-setup.md handleAdd の変更節 テスト観点10e"
+source_lines = "test/sync.test.ts:498"
+description = "'--'始まりの--remote値はparseArgsによりoptions.remote=trueと未知オプションに分解され、isSafeGitUrlに到達する前にUnknown optionで弾かれる"
+given = "syncCommand(['add', '--id', 'x', '--remote', '--upload-pack=touch /tmp/pwned'])"
+expect_return_shape = "exit 1、'Unknown option: --upload-pack=touch /tmp/pwned'を含む。結果としてgetSyncRemoteUrl() === null"
+
+[[condition]]
+id = "sync-add.unexpected-positional"
+target_function = "handleAdd"
+source = "docs/design/sync-setup.md handleAdd の変更節 テスト観点10f"
+source_lines = "test/sync.test.ts:505"
+description = "余分な位置引数は検証フェーズで拒否し、config保存等の副作用を起こさない"
+given = "syncCommand(['add', 'unexpected', '--id', 'x'])"
+expect_return_shape = "exit 1、'Unexpected argument: unexpected'。config保存等の副作用が起きないこと"
+
+[[condition]]
+id = "sync-add.auto-generated-id-invalid"
+target_function = "handleAdd"
+source = "docs/design/sync-setup.md handleAdd の変更節 テスト観点10g"
+source_lines = "test/sync.test.ts:512"
+description = "--id未指定時の自動生成idが不正な場合も明示的にexit 1する（空白等を含むディレクトリ名由来のid漏れ対策）"
+given = "generateSyncId()が空白を含む文字列（例: 'my project'）を返す状況で--id未指定のsyncCommand(['add'])"
+expect_return_shape = "exit 1、'Auto-generated sync id \"my project\" is invalid'を含む。loadSyncConfig()?.enabledがfalseのまま（configが保存されない）"
+
+# --- tm sync set --remote ---
+
+[[condition]]
+id = "sync-set.remote-unset-to-set"
+target_function = "handleSet"
+source = "docs/design/sync-setup.md handleSet の変更節 テスト観点11"
+source_lines = "test/sync.test.ts:542"
+description = "origin未設定の状態でset --remoteを指定するとoriginが設定される"
+given = "syncCommand(['set', '--remote', url])、事前にorigin未設定"
+expect_return_shape = "origin設定、ログに'Remote origin set to: <url>'"
+
+[[condition]]
+id = "sync-set.remote-without-sync-enabled"
+target_function = "handleSet"
+source = "docs/design/sync-setup.md handleSet の変更節 テスト観点12"
+source_lines = "test/sync.test.ts:550"
+description = "--remoteはsyncConfig.enabledを要求せず、未同期プロジェクトでも単体で成功する"
+given = "storeが{tasks: []}（sync無効）の状態でsyncCommand(['set', '--remote', url])"
+expect_return_shape = "exitせずorigin設定"
+
+[[condition]]
+id = "sync-set.remote-change"
+target_function = "handleSet"
+source = "docs/design/sync-setup.md handleSet の変更節 テスト観点13"
+source_lines = "test/sync.test.ts:558"
+description = "既存originがある場合はset-urlで変更し旧URLをログに残す"
+given = "別URL設定済みの状態でsyncCommand(['set', '--remote', newUrl])"
+expect_return_shape = "getSyncRemoteUrl() === newUrl、ログに'Remote origin changed: <old> -> <new>'"
+
+[[condition]]
+id = "sync-set.combined-id-remote-mode"
+target_function = "handleSet"
+source = "docs/design/sync-setup.md handleSet の変更節 テスト観点14"
+source_lines = "test/sync.test.ts:567"
+description = "--id・--remote・auto|manualを同時指定した場合すべて適用される"
+given = "syncCommand(['set', '--id', 'new-id', '--remote', url, 'auto'])"
+expect_return_shape = "origin・id・autoすべて適用される"
+
+[[condition]]
+id = "sync-set.no-args-usage"
+target_function = "handleSet"
+source = "docs/design/sync-setup.md handleSet の変更節 テスト観点15"
+source_lines = "test/sync.test.ts:576"
+description = "引数なしのsetは従来どおりusageエラー（文言に--remoteを含む）"
+given = "syncCommand(['set'])。プロジェクトは同期済み"
+expect_return_shape = "exit 1、usage（--remoteを含む文言に更新）"
+
+[[condition]]
+id = "sync-set.no-args-unsynced-not-synced"
+target_function = "handleSet"
+source = "コードレビュー指摘対応: 検証フェーズ先行化により、未同期プロジェクトでの引数なしsetが旧来の'Not synced'案内から汎用usageエラーへ変わっていた回帰（後方互換性表の「引数なしのusage error（exit 1）不変」の想定漏れ）"
+source_lines = "test/sync.test.ts:582"
+description = "未同期プロジェクトで引数なしのsetを実行した場合、汎用usageではなく従来どおり'Not synced'を案内する"
+given = "sync.enabled=falseの状態でsyncCommand(['set'])"
+expect_return_shape = "exit 1、'Not synced.'を含む"
+
+[[condition]]
+id = "sync-set.id-without-sync-not-synced"
+target_function = "handleSet"
+source = "docs/design/sync-setup.md handleSet の変更節 テスト観点16"
+source_lines = "test/sync.test.ts:589"
+description = "未同期プロジェクトで--idのみ指定した場合は従来どおりNot syncedで拒否する"
+given = "storeがsync無効の状態でsyncCommand(['set', '--id', 'x'])"
+expect_return_shape = "exit 1、'Not synced.'（既存挙動の維持）"
+
+[[condition]]
+id = "sync-set.validation-before-sideeffect"
+target_function = "handleSet"
+source = "docs/design/sync-setup.md handleSet の変更節 テスト観点16a"
+source_lines = "test/sync.test.ts:596"
+description = "modeが不正な場合、remoteへの副作用が発生する前に検証フェーズでexitする（部分適用の防止）"
+given = "別URL設定済みの状態でsyncCommand(['set', '--remote', newUrl, 'invalid-mode'])"
+expect_return_shape = "exit 1、usageメッセージ。getSyncRemoteUrl()が旧URLのまま変化していないこと"
+
+[[condition]]
+id = "sync-set.unsynced-with-remote-and-id"
+target_function = "handleSet"
+source = "docs/design/sync-setup.md handleSet の変更節 テスト観点16b"
+source_lines = "test/sync.test.ts:605"
+description = "未同期状態で--remoteと--idを併用した場合、検証フェーズでNot syncedとして拒否しremoteも変更しない"
+given = "storeがsync無効の状態でsyncCommand(['set', '--remote', url, '--id', 'x'])"
+expect_return_shape = "exit 1、'Not synced.'。remoteも変更されていないこと"
+
+[[condition]]
+id = "sync-set.invalid-id"
+target_function = "handleSet"
+source = "docs/design/sync-setup.md handleSet の変更節 テスト観点16c"
+source_lines = "test/sync.test.ts:614"
+description = "不正な--idは拒否する（addと同様の文字制限）"
+given = "syncCommand(['set', '--id', 'a/../b'])"
+expect_return_shape = "exit 1、'Invalid sync id:'"
+
+[[condition]]
+id = "sync-set.invalid-remote-url-dash"
+target_function = "handleSet"
+source = "docs/design/sync-setup.md handleSet の変更節 テスト観点16d"
+source_lines = "test/sync.test.ts:620"
+description = "単一'-'始まりの--remoteはオプション注入対策として拒否する"
+given = "syncCommand(['set', '--remote', '-oProxyCommand=touch /tmp/pwned'])"
+expect_return_shape = "exit 1、'Invalid remote URL:'"
+
+[[condition]]
+id = "sync-set.id-flag-no-value"
+target_function = "handleSet"
+source = "docs/design/sync-setup.md handleSet の変更節 テスト観点16i"
+source_lines = "test/sync.test.ts:626"
+description = "値なし--idは検証フェーズで拒否され、configが変化しない"
+given = "同期済み状態でsyncCommand(['set', '--id'])"
+expect_return_shape = "exit 1、usage。configが変化していないこと"
+
+[[condition]]
+id = "sync-set.unknown-option"
+target_function = "handleSet"
+source = "docs/design/sync-setup.md handleSet の変更節 テスト観点16j"
+source_lines = "test/sync.test.ts:633"
+description = "未知オプションは検証フェーズで拒否し、remoteも変更しない"
+given = "syncCommand(['set', '--remote', url, '--unknown', 'y'])"
+expect_return_shape = "exit 1、'Unknown option: --unknown'。remoteも変更されていないこと"
+
+[[condition]]
+id = "sync-set.extra-positional"
+target_function = "handleSet"
+source = "docs/design/sync-setup.md handleSet の変更節 テスト観点16k"
+source_lines = "test/sync.test.ts:641"
+description = "2個以上の位置引数は検証フェーズで拒否し、modeも変更しない"
+given = "syncCommand(['set', 'auto', 'extra'])"
+expect_return_shape = "exit 1、usage。modeも変更されていないこと"
+
+# --- 自動adopt（applyAutoAdopt / adoptRemoteIntoEmptyRepo） ---
+
+[[condition]]
+id = "sync-adopt.pc-b-recovery-e2e"
+target_function = "applyAutoAdopt / adoptRemoteIntoEmptyRepo"
+source = "docs/design/sync-setup.md 自動adoptのテスト観点 16e"
+source_lines = "test/sync.test.ts:653"
+description = "PC-Bが先にaddしただけの空repoにremote接続すると、remoteのデータを自動的に取り込んで復旧が完結する。ブートストラップファイル（config.json/.gitignore）の未追跡時退避ロジックの回帰確認を兼ねる"
+given = "bare remoteにconfig.jsonを含む形でPC-A相当のpush内容をcommit済み。ローカルはsyncCommand(['add', '--id', 'shared'])（remote無し・未追跡config.json/.gitignoreが存在・commit無し）に続けてsyncCommand(['set', '--remote', remotePath])"
+expect_return_shape = "ログに'Adopted existing data from remote.'を含み、hasSyncProject('shared') === true。以後syncCommand(['pull'])がexitせず成功する"
+
+[[condition]]
+id = "sync-adopt.non-main-branch-resolution"
+target_function = "adoptRemoteIntoEmptyRepo"
+source = "docs/design/sync-setup.md 自動adoptのテスト観点 16e2"
+source_lines = "test/sync.test.ts:668"
+description = "remoteのデフォルトブランチがmain/master以外でも、HEADのsymref解決により正しいブランチがadoptされる（git branch -rの表示順への依存を排除）"
+given = "bare remoteのデフォルトブランチがtrunk（main/master以外）で、他に古い保守用ブランチlegacyも存在する状態で16eと同じ手順を実行"
+expect_return_shape = "origin/legacyではなくorigin/trunk（remoteのHEAD symrefが指す方）がadoptされる。git -C SYNC_DIR branch --show-current === 'trunk'"
+
+[[condition]]
+id = "sync-adopt.remote-empty"
+target_function = "adoptRemoteIntoEmptyRepo"
+source = "docs/design/sync-setup.md 自動adoptのテスト観点 16f"
+source_lines = "test/sync.test.ts:701"
+description = "remoteにcommitが1つも無い場合はadoptを行わず、pushを促すメッセージのみでexitしない"
+given = "bare remoteをcommit無しで作成し、add --remote <bare>"
+expect_return_shape = "ログに'Remote repository has no commits yet. Run \"tm sync push\" to publish local data.'、exitしない"
+
+[[condition]]
+id = "sync-adopt.conflict-fails"
+target_function = "adoptRemoteIntoEmptyRepo"
+source = "docs/design/sync-setup.md 自動adoptのテスト観点 16g"
+source_lines = "test/sync.test.ts:708"
+description = "ブートストラップファイルではない真のローカルデータ（projects/配下）がremoteと衝突する場合はcheckoutを失敗させ非破壊のまま通知する"
+given = "projects/shared.json（未commit・remoteと同名・内容異なる実データ）が存在する状態でremote接続"
+expect_return_shape = "exit 1、'could not be adopted automatically'を含む。ローカルファイルが変更されず残っていること（非破壊）。config.json/.gitignoreは退避対象だがこのファイルは対象外であることが区別される"
+
+[[condition]]
+id = "sync-adopt.existing-commits-skips"
+target_function = "applyAutoAdopt"
+source = "docs/design/sync-setup.md 自動adoptのテスト観点 16h"
+source_lines = "test/sync.test.ts:723"
+description = "ローカルに既にcommitがある場合は復旧対象外としてadoptを走らせない"
+given = "add --remote → pushで1コミット作成済みの状態からset --remote <別url>"
+expect_return_shape = "adoptは走らない（hasSyncCommits() === trueのため）。従来の'Remote origin changed:'メッセージのみ"
+
+[[condition]]
+id = "sync-adopt.store-layer-id-guard"
+target_function = "saveToSync / pullFromSync / hasSyncProject"
+source = "docs/design/sync-setup.md 自動adoptのテスト観点 16l"
+source_lines = "test/sync.test.ts:733"
+description = "CLI層の--id検証をバイパスする経路（手編集config.json等）でも、store層自体が不正idを拒否しprojects/外へのファイル操作を防ぐ"
+given = "syncConfig.idに'../evil'相当の不正値が入った状態を想定し、saveToSync('../evil', store) / pullFromSync('../evil') / hasSyncProject('../evil')をCLI層を経由せず直接呼ぶ"
+expect_return_shape = "それぞれfalse / null / falseを返し、projects/外へのファイル操作が起きないこと"
+
+[[condition]]
+id = "sync-adopt.unsafe-branch-name-rejected"
+target_function = "adoptRemoteIntoEmptyRepo"
+source = "コードレビュー指摘対応: remoteのHEAD symrefが指すbranch名を検証なくfetch/checkoutへ渡していた（'-'始まりのbranch名がgitオプションと誤解釈されうる）"
+source_lines = "test/sync.test.ts:682"
+description = "ls-remote --symrefが返すbranch名が'-'始まり等の安全でない文字列の場合、fetch/checkoutへ渡さずfetch-failedとして扱う"
+given = "bare remoteのHEAD symrefが指すbranch名が'-'始まりになるよう細工した状態でadoptRemoteIntoEmptyRepo()を呼ぶ"
+expect_return_shape = "{ kind: 'fetch-failed', stderr: 'Unsafe branch name from remote: \"-branch\"' } を返し、fetch/checkoutが実行されない"
+
+# --- tm sync push ---
+
+[[condition]]
+id = "sync-push.origin-not-configured"
+target_function = "handlePush"
+source = "docs/design/sync-setup.md handlePush の変更節 テスト観点17"
+source_lines = "test/sync.test.ts:746"
+description = "origin未設定でのpushはfail-fastし、sync repoに一切commitを作らない"
+given = "add済み・origin無しの状態でsyncCommand(['push'])"
+expect_return_shape = "exit 1、'Remote origin is not configured.'とガイド。sync repoにcommitが作られないこと"
+
+[[condition]]
+id = "sync-push.e2e-success"
+target_function = "handlePush"
+source = "docs/design/sync-setup.md handlePush の変更節 テスト観点18"
+source_lines = "test/sync.test.ts:754"
+description = "origin設定済みでのpushはbare remoteへ実際にデータを届ける"
+given = "bare remoteに対しadd --remote → push"
+expect_return_shape = "exitせず、bare remote側にcommitが存在（git rev-parse HEAD成功）し、projects/<id>.jsonが届いている"
+
+[[condition]]
+id = "sync-push.git-add-fails"
+target_function = "handlePush"
+source = "docs/design/sync-setup.md handlePush の変更節 テスト観点18a"
+source_lines = "test/sync.test.ts:765"
+description = "git add .の失敗を検知し、commit/pushへ進まずexit 1する"
+given = "sync repoの.gitを意図的に壊す等でgit add .が失敗する状況"
+expect_return_shape = "exit 1、'Failed to stage changes.'。commit・pushが実行されないこと（bare remoteにcommitが届かない）"
+
+# --- tm sync pull ---
+
+[[condition]]
+id = "sync-pull.not-initialized"
+target_function = "handlePull"
+source = "docs/design/sync-setup.md handlePull の変更節 テスト観点19"
+source_lines = "test/sync.test.ts:785"
+description = "sync repo未初期化の場合はcloneを案内してexitする"
+given = "storeにsync設定のみ（initSyncRepo未実行）でsyncCommand(['pull'])"
+expect_return_shape = "exit 1、'Sync repository is not initialized on this machine.'と'tm sync clone <url>'ガイド"
+
+[[condition]]
+id = "sync-pull.no-remote-no-data"
+target_function = "handlePull"
+source = "docs/design/sync-setup.md handlePull の変更節 テスト観点20"
+source_lines = "test/sync.test.ts:793"
+description = "初期化済み・remote未設定・ローカルデータ無しの場合はset --remoteを案内してexitする"
+given = "initSyncRepo() + addの後、remote未設定・ローカルにprojects/<id>.json無しでpull"
+expect_return_shape = "exit 1、'No remote is configured and no local data exists'と'tm sync set --remote'ガイド"
+
+[[condition]]
+id = "sync-pull.no-remote-has-data-regression"
+target_function = "handlePull"
+source = "docs/design/sync-setup.md handlePull の変更節 テスト観点21"
+source_lines = "test/sync.test.ts:801"
+description = "remote未設定でもローカルにデータがあれば従来どおりpullが完了する（この経路を壊さない）"
+given = "add --saveでprojects/<id>.jsonをローカルに作成後、remote未設定でpull"
+expect_return_shape = "従来どおり警告のみでpullが完了する（exitしない）"
+
+[[condition]]
+id = "sync-pull.clone-e2e"
+target_function = "handlePull"
+source = "docs/design/sync-setup.md handlePull の変更節 テスト観点22"
+source_lines = "test/sync.test.ts:807"
+description = "clone経由でセットアップした場合、pullでremoteのタスクがローカルへ反映される"
+given = "remoteにデータがある状態でclone → add --id <同ID> → pull"
+expect_return_shape = "ローカルstoreにremoteのタスクが反映される"
+
+[[condition]]
+id = "sync-pull.project-not-found-guidance"
+target_function = "pullFromSync"
+source = "docs/design/sync-setup.md pullFromSync のメッセージ変更節 テスト観点23"
+source_lines = "test/sync.test.ts:825"
+description = "存在しないプロジェクトIDのpullは案内2行を追加で表示する"
+given = "initSyncRepo()後にpullFromSync('ghost')"
+expect_return_shape = "'Project \"ghost\" not found in sync repository.'に加え'Run \"tm sync list\" to see available projects.'と'Run \"tm sync set --id <name>\" to use a different ID for this project.'の案内行を含む"
+
+# --- status / util / help ---
+
+[[condition]]
+id = "sync-util.get-sync-remote-url"
+target_function = "getSyncRemoteUrl"
+source = "docs/design/sync-setup.md status / getSyncRemoteUrl / isValidSyncId / isSafeGitUrl / help のテスト観点 24"
+source_lines = "test/sync.test.ts:838"
+description = "sync repoの状態3段階でgetSyncRemoteUrlが正しい値を返す"
+given = "未初期化 / 初期化のみ（remote未設定） / remote add後、の3状態"
+expect_return_shape = "未初期化でnull、初期化のみでnull、remote add後は設定したURL文字列"
+
+[[condition]]
+id = "sync-status.remote-line"
+target_function = "handleStatus"
+source = "docs/design/sync-setup.md handleStatus の変更節 / テスト観点25"
+source_lines = "test/sync.test.ts:847"
+description = "statusコマンドがRemote行を表示する"
+given = "origin未設定 / 設定済みの2状態でsyncCommand(['status'])"
+expect_return_shape = "未設定で'Remote: Not configured'、設定後は'Remote: <url>'を含む"
+
+[[condition]]
+id = "sync-help.subcommand-help"
+target_function = "showHelp"
+source = "docs/design/sync-setup.md showHelp の更新節 / テスト観点26"
+source_lines = "test/sync.test.ts:859"
+description = "sync help出力にcloneサブコマンドと--remoteオプションが記載される"
+given = "syncCommand(['help'])"
+expect_return_shape = "出力に'clone <url>'と'--remote <url>'を含む"
+
+[[condition]]
+id = "sync-help.get-help-text-includes-clone"
+target_function = "getHelpText"
+source = "docs/design/sync-setup.md src/index.ts の変更節 / テスト観点27"
+source_lines = "test/index.test.ts:60"
+description = "トップレベルヘルプのsync subcommand一覧にcloneが追記される"
+given = "test/index.test.tsでgetHelpText()を呼ぶ"
+expect_return_shape = "戻り値の文字列に'clone'を含む"
+
+[[condition]]
+id = "sync-util.is-valid-sync-id"
+target_function = "isValidSyncId"
+source = "docs/design/sync-setup.md syncStore.tsの新関数節 / テスト観点28"
+source_lines = "test/sync.test.ts:865"
+description = "許可文字（英数・.・_・-）のみのidをtrue、パストラバーサル・空文字等をfalseと判定する"
+given = "'my-project' 'v1.2_x' は許可文字のみで'.'/'..'とも異なる。'../x' 'a/b' '.' '..' '' はいずれか条件に反する"
+expect_return_shape = "'my-project' 'v1.2_x' → true。'../x' 'a/b' '.' '..' '' → false"
+
+[[condition]]
+id = "sync-util.is-safe-git-url"
+target_function = "isSafeGitUrl"
+source = "docs/design/sync-setup.md syncStore.tsの新関数節 / テスト観点29。コードレビュー指摘によりgit remote helper構文（'::')拒否を追加"
+source_lines = "test/sync.test.ts:875"
+description = "空文字・単一'-'始まりの値・'::'を含む値（git remote helper構文によるコマンド実行対策）をfalse、それ以外をtrueと判定する"
+given = "'https://example.com/x.git' 'git@example.com:x.git' は非空・'-'始まりでない・'::'を含まない。'-oProxyCommand=x' '--upload-pack=x' は'-'始まり、''は空文字、'ext::sh -c \"touch /tmp/pwned\"'は'::'を含む"
+expect_return_shape = "'https://example.com/x.git' 'git@example.com:x.git' → true。'-oProxyCommand=x' '--upload-pack=x' '' 'ext::sh -c \"touch /tmp/pwned\"' → false"
+
+# --- 条件化しないと決定した項目 ---
+
+[[excluded]]
+item = "型安全規約への適合節の記述（asキャスト・any使用なし、spawnSyncの戻り値をresult.status ?? 1でnumber化、テストのprocess.exitスタブ方式の踏襲）"
+source = "docs/design/sync-setup.md 型安全規約への適合節"
+reason = "入出力の分岐条件ではなくコーディングスタイル・実装規約であり、型システムとlintで保証される領域のため条件化しない（§8: 型システムで保証済みの分岐に準ずる）"
+decided_at = "2026-09-04"
+decided_by = "claude"
+
+[[excluded]]
+item = "後方互換性の確認項目テーブル（tm sync add/set/push/pull等の既存挙動不変の表）"
+source = "docs/design/sync-setup.md 後方互換性の確認項目節"
+reason = "同節の内容は上記の各条件（sync-add.*, sync-set.*, sync-push.*, sync-pull.*）で既に個別に条件化済みであり、テーブル自体は重複するサマリのため独立した条件を追加しない"
+decided_at = "2026-09-04"
+decided_by = "claude"

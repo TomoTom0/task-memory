@@ -31,6 +31,7 @@
 - `order.md` - order機能
 - `review.md` - review機能
 - `blocked.md` - blocked状態・gate（開始条件）
+- `sync-setup.md` - tm sync 初回セットアップ改善（clone/remote設定/自動adopt）
 
 ### dev/
 開発者向けドキュメント。

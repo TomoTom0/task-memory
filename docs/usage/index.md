@@ -313,6 +313,33 @@ tm -G new "タスク"
 
 `~/.local/task-memory/` リポジトリ経由でタスクデータを管理・共有します。
 
+### 初回セットアップ
+
+PC-A（最初の1台）:
+
+```bash
+# syncに追加しつつremoteを設定（privateな空repoのURLを指定）
+tm sync add --id my-project --save --remote <url>
+
+# リモートにpush
+tm sync push
+```
+
+PC-B（2台目以降）:
+
+```bash
+# 既存のsync repoをclone
+tm sync clone <url>
+
+# 現在のプロジェクトをsyncに登録（PC-Aと同じIDを指定）
+tm sync add --id my-project
+
+# タスクを取得
+tm sync pull
+```
+
+remote未設定の状態で `tm sync push` / `tm sync pull` を実行すると、次の一手を示すガイド付きでexit 1します。
+
 ### 初期設定
 
 ```bash
@@ -321,13 +348,19 @@ tm sync add --save
 
 # IDを明示的に指定する場合
 tm sync add --id my-project --save
+
+# remoteを同時に設定する場合
+tm sync add --id my-project --save --remote <url>
 ```
 
-### sync IDの変更
+### sync ID・remote・モードの変更
 
 ```bash
 # sync IDを変更
 tm sync set --id new-name
+
+# remote URLを設定・変更（未同期のプロジェクトでも単体で実行可能）
+tm sync set --remote <url>
 
 # 同期モードを変更（auto: タスク変更時に自動でsave）
 tm sync set auto
@@ -363,6 +396,8 @@ tm sync pull --merge
 tm sync status
 tm sync list
 ```
+
+`tm sync status` は `Remote: <URL>` または `Remote: Not configured` の行でremote URLの設定状態を表示します。
 
 ## ドキュメントの表示 (`tm docs`)
 
