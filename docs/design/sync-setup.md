@@ -132,7 +132,10 @@ export function adoptRemoteIntoEmptyRepo(): AdoptResult;
 // 1. runGitCommandCapture(['ls-remote', '--symref', 'origin', 'HEAD'])
 //    - 失敗（network/認証エラー等）→ { kind: 'fetch-failed', stderr }
 //    - stdoutから `^ref: refs/heads/(\S+)\s+HEAD$` にマッチする行を探す。
-//      マッチなし（remoteにHEADが無い＝ブランチもcommitも無い空repo）→ { kind: 'remote-empty' }
+//      マッチなしの場合は `git ls-remote --heads origin` で実ブランチを確認する。
+//      ブランチなし → { kind: 'remote-empty' }
+//      ブランチあり（default HEADが壊れている/未設定）→ { kind: 'fetch-failed', stderr }。
+//      default branchを推測して誤ったデータをadoptしないため、remote HEADの修復を促す。
 //    - マッチした `\1` を branch とする
 // 2. runGitCommandCapture(['fetch', 'origin', branch]) が失敗 → { kind: 'fetch-failed', stderr }
 // 3. ブートストラップファイルの除去（2回目レビュー指摘1対応。下記「ブートストラップファイルの扱い」参照）

@@ -98,10 +98,10 @@ export function isValidSyncId(id: string): boolean {
 }
 
 export function isSafeGitUrl(url: string): boolean {
-    // '::'はgitのremote helper構文（例: ext::sh -c '...'）を起動し、任意コマンド実行を許す。
-    // isSafeGitUrl()はオプション注入対策専用ではなく、危険なurl文字列を拒否する境界のため
-    // ここで合わせて拒否する（コードレビュー指摘対応）。
-    return url.length > 0 && !url.startsWith('-') && !url.includes('::');
+    // <transport>::<address> は git remote helper 構文（例: ext::sh -c '...'）で、
+    // 任意の helper を起動し得る。一方、SSH URL 内の IPv6 リテラルにも :: は
+    // 含まれるため、先頭の transport 部分だけを拒否する。
+    return url.length > 0 && !url.startsWith('-') && !/^[A-Za-z][A-Za-z0-9+.-]*::/.test(url);
 }
 
 export function ensureProjectsDir(): void {
@@ -270,6 +270,19 @@ export function adoptRemoteIntoEmptyRepo(): AdoptResult {
     const match = symrefResult.stdout.match(/^ref: refs\/heads\/(\S+)\s+HEAD$/m);
     const branch = match?.[1];
     if (!branch) {
+        // HEAD symref が欠けていても、既存ブランチがあるなら空 remote ではない。
+        // どのブランチを採用すべきか安全に判断できないため、remote の HEAD を
+        // 修復してもらうまで adopt は行わない。
+        const headsResult = runGitCommandCapture(['ls-remote', '--heads', 'origin']);
+        if (headsResult.status !== 0) {
+            return { kind: 'fetch-failed', stderr: headsResult.stderr };
+        }
+        if (/^\S+\s+refs\/heads\//m.test(headsResult.stdout)) {
+            return {
+                kind: 'fetch-failed',
+                stderr: 'Remote has branches but its default HEAD does not point to one. Set the remote HEAD, then retry.',
+            };
+        }
         return { kind: 'remote-empty' };
     }
     // isSafeGitUrl()は「-始まり/::を含む文字列をgit引数へ渡さない」判定として汎用的に使える。

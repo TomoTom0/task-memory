@@ -705,6 +705,20 @@ describe('sync clone/add/set/push/pull (TASK-12 test-first)', () => {
             expect(result.logs.some(l => l.includes('Remote repository has no commits yet. Run "tm sync push" to publish local data.'))).toBe(true);
         });
 
+        it('[covers:sync-adopt.missing-head-with-branches] default HEADが存在しないbranchを指しても、既存branchを空remoteと誤判定しない', () => {
+            const remote = createBareRemote('master');
+            seedRemote(remote, 'master', {
+                'projects/shared.json': JSON.stringify({ tasks: [] }, null, 2),
+            });
+            spawnSync('git', ['-C', remote, 'symbolic-ref', 'HEAD', 'refs/heads/missing'], { stdio: 'pipe' });
+
+            runExpectingExit(() => syncCommand(['add', '--id', 'shared']));
+            const result = runExpectingExit(() => syncCommand(['set', '--remote', remote]));
+            expect(result.code).toBe(1);
+            expect(result.logs.some(l => l.includes('Remote repository has no commits yet.'))).toBe(false);
+            expect(result.errors.some(e => e.includes('Remote has branches but its default HEAD does not point to one.'))).toBe(true);
+        });
+
         it('[covers:sync-adopt.conflict-fails] 真のローカルデータがremoteと衝突する場合はcheckoutを失敗させ非破壊のまま通知する', () => {
             const remote = createBareRemote();
             seedRemote(remote, 'main', {
@@ -872,9 +886,10 @@ describe('sync clone/add/set/push/pull (TASK-12 test-first)', () => {
             expect(isValidSyncId('')).toBe(false);
         });
 
-        it('[covers:sync-util.is-safe-git-url] 空文字・単一-始まり・remote helper構文(::)の値はfalse、それ以外はtrue', () => {
+        it('[covers:sync-util.is-safe-git-url] 空文字・単一-始まり・remote helper構文はfalse、IPv6 SSH URLを含む通常URLはtrue', () => {
             expect(isSafeGitUrl('https://example.com/x.git')).toBe(true);
             expect(isSafeGitUrl('git@example.com:x.git')).toBe(true);
+            expect(isSafeGitUrl('ssh://git@[2001:db8::1]/repo.git')).toBe(true);
             expect(isSafeGitUrl('-oProxyCommand=x')).toBe(false);
             expect(isSafeGitUrl('--upload-pack=x')).toBe(false);
             expect(isSafeGitUrl('')).toBe(false);
