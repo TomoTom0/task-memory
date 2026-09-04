@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { isMainEntry } from '../src/index';
+import { getHelpText, isMainEntry } from '../src/index';
 import { writeFileSync, symlinkSync } from 'fs';
 import { join } from 'path';
 import { pathToFileURL } from 'url';
@@ -53,5 +53,11 @@ describe('isMainEntry (symlink-aware direct invocation check)', () => {
         const real = join(tempDir, 'index.js');
         writeFileSync(real, '');
         expect(isMainEntry(real, pathToFileURL(join(tempDir, 'missing.js')).href)).toBe(false);
+    });
+});
+
+describe('getHelpText', () => {
+    it('[covers:sync-help.get-help-text-includes-clone] sync subcommand一覧にcloneが含まれる', () => {
+        expect(getHelpText()).toContain('clone');
     });
 });

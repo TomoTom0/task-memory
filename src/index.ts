@@ -104,7 +104,7 @@ Commands:
 
   sync <subcommand> [options]
     Sync tasks to ~/.local/task-memory/ repository.
-    Subcommands: add, remove, push, pull, set, status, list
+    Subcommands: clone, add, remove, push, pull, set, status, list
 
   git <git-command> [args]
     Run git commands in ~/.local/task-memory/ repository.
