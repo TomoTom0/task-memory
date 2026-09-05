@@ -271,8 +271,17 @@ function handlePush(): void {
     }
     console.log(`Saved. (id: ${syncConfig.id})`);
 
+    // 同期対象は projects/ のみ。旧版で追跡されたローカル設定ファイルを index から
+    // 外しても、--cached のため作業ツリー上のファイルは削除されない。
+    const untrackLocalFilesResult = runGitCommandCapture(['rm', '--cached', '--ignore-unmatch', 'config.json', '.gitignore']);
+    if (untrackLocalFilesResult.status !== 0) {
+        console.error('Failed to stop tracking local sync files.');
+        console.error(untrackLocalFilesResult.stderr);
+        process.exit(1);
+    }
+
     // git add
-    const addStatus = runGitCommand(['add', '.']);
+    const addStatus = runGitCommand(['add', '--', 'projects']);
     if (addStatus !== 0) {
         console.error('Failed to stage changes.');
         process.exit(1);
@@ -326,7 +335,10 @@ function handlePull(options: Record<string, string | boolean>): void {
     }
 
     // リモートの変更を取得
-    const pullStatus = runGitCommand(['pull', '--rebase']);
+    // 旧バージョンで初期化された sync repo には現在ブランチの upstream が
+    // 設定されていない場合がある。origin の既定ブランチを明示すれば、その状態でも
+    // pull できる（通常の clone で設定された upstream がある場合にも同じく動作する）。
+    const pullStatus = runGitCommand(['pull', '--rebase', 'origin', 'HEAD']);
     if (pullStatus !== 0) {
         console.error('Warning: git pull failed. Using local data.');
     }

@@ -744,6 +744,25 @@ describe('sync clone/add/set/push/pull (TASK-12 test-first)', () => {
             expect(rev.status).toBe(0);
             const ls = spawnSync('git', ['--git-dir', remote, 'ls-tree', '-r', '--name-only', 'HEAD'], { encoding: 'utf-8' });
             expect(ls.stdout).toContain('projects/test-project.json');
+            expect(ls.stdout).not.toContain('config.json');
+            expect(ls.stdout).not.toContain('.gitignore');
+        });
+
+        it('[covers:sync-push.config-local-only] 旧版で追跡済みのconfig.jsonはpush時にリモートから除外される', () => {
+            const remote = createBareRemote();
+            seedRemote(remote, 'main', {
+                'config.json': JSON.stringify({ defaultAuto: true }, null, 2),
+                'projects/test-project.json': JSON.stringify({ tasks: [] }, null, 2),
+            });
+            runExpectingExit(() => syncCommand(['clone', remote]));
+            runExpectingExit(() => syncCommand(['add', '--id', 'test-project']));
+
+            const result = runExpectingExit(() => syncCommand(['push']));
+            expect(result.code).toBeUndefined();
+            const ls = spawnSync('git', ['--git-dir', remote, 'ls-tree', '-r', '--name-only', 'HEAD'], { encoding: 'utf-8' });
+            expect(ls.stdout).not.toContain('config.json');
+            expect(ls.stdout).not.toContain('.gitignore');
+            expect(ls.stdout).toContain('projects/test-project.json');
         });
 
         it('[covers:sync-push.git-add-fails] git add .の失敗を検知しcommit/pushへ進まずexit 1する', () => {
@@ -804,6 +823,23 @@ describe('sync clone/add/set/push/pull (TASK-12 test-first)', () => {
             expect(result.code).toBeUndefined();
             const store = loadStore();
             expect(store.tasks.some(t => t.summary === 'from remote')).toBe(true);
+        });
+
+        it('[covers:sync-pull.no-upstream] 現在ブランチにupstreamがなくてもoriginの既定ブランチからpullできる', () => {
+            const remote = createBareRemote();
+            seedRemote(remote, 'main', {
+                'projects/test-project.json': JSON.stringify({ tasks: [] }, null, 2),
+            });
+            runExpectingExit(() => syncCommand(['clone', remote]));
+            runExpectingExit(() => syncCommand(['add', '--id', 'test-project']));
+
+            const branch = runGitCommandCapture(['branch', '--show-current']).stdout.trim();
+            expect(runGitCommandCapture(['config', '--unset', `branch.${branch}.remote`]).status).toBe(0);
+            expect(runGitCommandCapture(['config', '--unset', `branch.${branch}.merge`]).status).toBe(0);
+
+            const result = runExpectingExit(() => syncCommand(['pull']));
+            expect(result.code).toBeUndefined();
+            expect(result.errors.some(e => e.includes('Warning: git pull failed.'))).toBe(false);
         });
 
         it('[covers:sync-pull.project-not-found-guidance] 存在しないプロジェクトIDのpullFromSyncは案内2行を追加で表示する', () => {

@@ -814,6 +814,20 @@ HOME差し替えをファイル全体のbeforeEach/afterEachに変更したこ�
 - `spawnSync` の戻り値は既存どおり `result.status ?? 1` でnumber化（null伝播しない）
 - テストコードのprocess.exitスタブは既存 `test/sync.test.ts` の記述を踏襲する
 
+## 同期対象の限定: projects/ のみ（初期実装後の変更）
+
+初期実装のmerge後、同期対象を `projects/` 配下のタスクデータのみに限定した。`config.json`（`defaultAuto` 等の同期クライアント設定）と `.gitignore` はPC単位のローカル設定であり、remoteへ同期すべきでない。
+
+### 変更内容
+
+- `handlePush()`: stage範囲を `git add .` から `git add -- projects` に限定。加えて旧版がremoteへcommit済みのこれらファイルをindexから外すため、push前に `git rm --cached --ignore-unmatch config.json .gitignore` を実行する。`--cached` のため作業ツリー上のファイルは削除されず、`--ignore-unmatch` のため旧版repoで未追跡の場合も失敗しない。この解除をcommitするため、旧版で初期化されたrepoも次回のpushでremoteから排除される
+- `initSyncRepo()`: `.gitignore` の生成を廃止（「ブートストラップファイルの扱い」記載のうち `.gitignore` 生成は本変更で削除。`config.json` はローカル設定として引き続き生成する）
+- `handlePull()`: `git pull --rebase` を `git pull --rebase origin HEAD` に変更。旧バージョンで `git init` 由来の初期化をしたsync repoは現在ブランチにupstreamが設定されておらず、upstream暗黙解決のpullが失敗する。originの既定ブランチを明示すれば両状態（upstreamあり/なし）で動作する
+
+### ブートストラップ退避ロジックとの関係
+
+旧remote（`config.json` を追跡済み）からclone・adoptするPC-Bでは、remote側の追跡ファイルとローカルの未追跡 `config.json` の衝突が引き続き発生するため、`adoptRemoteIntoEmptyRepo()` の退避ロジックは残置する。新規に初期化されたPC-Aのpushは本変更により `config.json` を含まなくなるため、新規remoteではこの衝突自体が起きない。
+
 ## 実装順序
 
 1. syncStore.ts: パス遅延計算化（既存テストが全greenであることを確認）

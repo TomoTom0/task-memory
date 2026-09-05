@@ -59,12 +59,6 @@ export function initSyncRepo(): boolean {
         writeFileSync(configFile, JSON.stringify(config, null, 2), 'utf-8');
     }
 
-    // .gitignore を作成（必要に応じて）
-    const gitignorePath = join(syncDir, '.gitignore');
-    if (!existsSync(gitignorePath)) {
-        writeFileSync(gitignorePath, '# Add patterns to ignore\n', 'utf-8');
-    }
-
     return true;
 }
 

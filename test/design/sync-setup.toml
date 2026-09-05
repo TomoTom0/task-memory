@@ -2,15 +2,17 @@
 # 出典: docs/design/sync-setup.md（4サイクルのcodexレビューを経て確定済み、2026-09-04時点）
 # 実装・テストコード執筆済み。/code-review high指摘対応（handleAddの保存順序、isSafeGitUrlのremote helper拒否、
 # branch名検証、handleSetのNot synced回帰）を反映済み。pnpm test 263件全PASS・verify-conditions.py PASSを確認済み
+# 2026-09-04追記: 「同期対象の限定: projects/ のみ」変更に対応し条件2件追加・既存条件3件更新・除外記録6件追加。
+# 条件書対象テスト（test/sync.test.ts + test/index.test.ts、79件）全PASS・verify-conditions.py PASSを確認
 [meta]
 feature = "sync-setup"
 source_file = "src/syncStore.ts"
 verified = true
 verified_at = "2026-09-04"
 verified_by = "claude"
-test_command = "pnpm test"
-source_hash = "49dd2ccfc4188727bb7a47502beb2ce0cfc9ee30"
-note = "条件はdocs/design/sync-setup.md「テスト設計」節（テスト観点1-29、枝番含む）+コードレビュー指摘対応4件を出典として走査。verified=falseは0件"
+test_command = "pnpm vitest run test/sync.test.ts test/index.test.ts"
+source_hash = "9b0505e0dce0e87465c0aa8da8bcf01778a9dc01"
+note = "条件はdocs/design/sync-setup.md「テスト設計」節（テスト観点1-29、枝番含む）+同期対象の限定: projects/ のみ（初期実装後の変更）節+コードレビュー指摘対応4件を出典として走査。verified=falseは0件。full suite（pnpm test）はテストファイル並列実行の相互干渉により本環境では失敗するが、変更前commit 82ce37cでも同様に失敗する既存の環境起因であり本条件書の対象テストは全PASS"
 
 # --- tm sync clone ---
 
@@ -323,7 +325,7 @@ target_function = "applyAutoAdopt / adoptRemoteIntoEmptyRepo"
 source = "docs/design/sync-setup.md 自動adoptのテスト観点 16e"
 source_lines = "test/sync.test.ts:623"
 description = "PC-Bが先にaddしただけの空repoにremote接続すると、remoteのデータを自動的に取り込んで復旧が完結する。ブートストラップファイル（config.json/.gitignore）の未追跡時退避ロジックの回帰確認を兼ねる"
-given = "bare remoteにconfig.jsonを含む形でPC-A相当のpush内容をcommit済み。ローカルはsyncCommand(['add', '--id', 'shared'])（remote無し・未追跡config.json/.gitignoreが存在・commit無し）に続けてsyncCommand(['set', '--remote', remotePath])"
+given = "bare remoteにconfig.jsonを含む形でPC-A相当のpush内容をcommit済み。ローカルはsyncCommand(['add', '--id', 'shared'])（remote無し・未追跡config.jsonが存在・commit無し。.gitignoreは同期対象限定変更で生成されなくなったが、退避ロジック自体はconfig.json/.gitignoreの両方を残置対象とする）に続けてsyncCommand(['set', '--remote', remotePath])"
 expect_return_shape = "ログに'Adopted existing data from remote.'を含み、hasSyncProject('shared') === true。以後syncCommand(['pull'])がexitせず成功する"
 
 [[condition]]
@@ -403,19 +405,28 @@ expect_return_shape = "exit 1、'Remote origin is not configured.'とガイド�
 [[condition]]
 id = "sync-push.e2e-success"
 target_function = "handlePush"
-source = "docs/design/sync-setup.md handlePush の変更節 テスト観点18"
-source_lines = "test/sync.test.ts:738"
-description = "origin設定済みでのpushはbare remoteへ実際にデータを届ける"
+source = "docs/design/sync-setup.md handlePush の変更節 テスト観点18 + 同期対象の限定: projects/ のみ（初期実装後の変更）節 変更内容"
+source_lines = "test/sync.test.ts:768"
+description = "origin設定済みでのpushはbare remoteへ実際にデータを届ける。stage範囲がgit add -- projectsに限定されたため、ローカル設定ファイル（config.json/.gitignore）は新規初期化repoのpushにも含まれない。未追跡ファイルに対するgit rm --cached --ignore-unmatchが失敗しないこともこのpush成功に含まれる"
 given = "bare remoteに対しadd --remote → push"
-expect_return_shape = "exitせず、bare remote側にcommitが存在（git rev-parse HEAD成功）し、projects/<id>.jsonが届いている"
+expect_return_shape = "exitせず、bare remote側にcommitが存在（git rev-parse HEAD成功）し、projects/<id>.jsonが届いている。remoteのls-treeにconfig.json/.gitignoreが含まれない"
+
+[[condition]]
+id = "sync-push.config-local-only"
+target_function = "handlePush"
+source = "docs/design/sync-setup.md 同期対象の限定: projects/ のみ（初期実装後の変更）節 変更内容"
+source_lines = "test/sync.test.ts:781"
+description = "旧版がremoteへcommit済みのconfig.json/.gitignoreを、push前のgit rm --cached --ignore-unmatchでindexから外して解除をcommitに含めるため、旧版で初期化されたrepoも次回のpushでremoteから排除される。--cachedのため作業ツリー上のファイルは削除されない"
+given = "config.jsonとprojects/test-project.jsonをcommit済みのbare remoteをclone → add --idした状態（config.jsonが追跡済み）でsyncCommand(['push'])"
+expect_return_shape = "exitせず、remote側のls-treeからconfig.json/.gitignoreが消え、projects/test-project.jsonは届いている"
 
 [[condition]]
 id = "sync-push.git-add-fails"
 target_function = "handlePush"
 source = "docs/design/sync-setup.md handlePush の変更節 テスト観点18a"
-source_lines = "test/sync.test.ts:749"
-description = "git add .の失敗を検知し、commit/pushへ進まずexit 1する"
-given = "sync repoの.gitを意図的に壊す等でgit add .が失敗する状況"
+source_lines = "test/sync.test.ts:798"
+description = "git add -- projectsの失敗を検知し、commit/pushへ進まずexit 1する"
+given = "sync repoの.gitを意図的に壊す等でgit add -- projectsが失敗する状況"
 expect_return_shape = "exit 1、'Failed to stage changes.'。commit・pushが実行されないこと（bare remoteにcommitが届かない）"
 
 # --- tm sync pull ---
@@ -424,7 +435,7 @@ expect_return_shape = "exit 1、'Failed to stage changes.'。commit・pushが実
 id = "sync-pull.not-initialized"
 target_function = "handlePull"
 source = "docs/design/sync-setup.md handlePull の変更節 テスト観点19"
-source_lines = "test/sync.test.ts:769"
+source_lines = "test/sync.test.ts:818"
 description = "sync repo未初期化の場合はcloneを案内してexitする"
 given = "storeにsync設定のみ（initSyncRepo未実行）でsyncCommand(['pull'])"
 expect_return_shape = "exit 1、'Sync repository is not initialized on this machine.'と'tm sync clone <url>'ガイド"
@@ -433,7 +444,7 @@ expect_return_shape = "exit 1、'Sync repository is not initialized on this mach
 id = "sync-pull.no-remote-no-data"
 target_function = "handlePull"
 source = "docs/design/sync-setup.md handlePull の変更節 テスト観点20"
-source_lines = "test/sync.test.ts:777"
+source_lines = "test/sync.test.ts:826"
 description = "初期化済み・remote未設定・ローカルデータ無しの場合はset --remoteを案内してexitする"
 given = "initSyncRepo() + addの後、remote未設定・ローカルにprojects/<id>.json無しでpull"
 expect_return_shape = "exit 1、'No remote is configured and no local data exists'と'tm sync set --remote'ガイド"
@@ -442,7 +453,7 @@ expect_return_shape = "exit 1、'No remote is configured and no local data exist
 id = "sync-pull.no-remote-has-data-regression"
 target_function = "handlePull"
 source = "docs/design/sync-setup.md handlePull の変更節 テスト観点21"
-source_lines = "test/sync.test.ts:785"
+source_lines = "test/sync.test.ts:834"
 description = "remote未設定でもローカルにデータがあれば従来どおりpullが完了する（この経路を壊さない）"
 given = "add --saveでprojects/<id>.jsonをローカルに作成後、remote未設定でpull"
 expect_return_shape = "従来どおり警告のみでpullが完了する（exitしない）"
@@ -451,16 +462,25 @@ expect_return_shape = "従来どおり警告のみでpullが完了する（exit�
 id = "sync-pull.clone-e2e"
 target_function = "handlePull"
 source = "docs/design/sync-setup.md handlePull の変更節 テスト観点22"
-source_lines = "test/sync.test.ts:791"
+source_lines = "test/sync.test.ts:840"
 description = "clone経由でセットアップした場合、pullでremoteのタスクがローカルへ反映される"
 given = "remoteにデータがある状態でclone → add --id <同ID> → pull"
 expect_return_shape = "ローカルstoreにremoteのタスクが反映される"
 
 [[condition]]
+id = "sync-pull.no-upstream"
+target_function = "handlePull"
+source = "docs/design/sync-setup.md 同期対象の限定: projects/ のみ（初期実装後の変更）節 変更内容"
+source_lines = "test/sync.test.ts:858"
+description = "pullがgit pull --rebase origin HEADとなり、現在ブランチにupstreamが設定されていない旧バージョン初期化由来のsync repoでもoriginの既定ブランチからpullできる。upstreamありのrepo（clone直後）でも同一コマンドで動作する"
+given = "bare remoteをseedしてclone → add --id後、branch.<name>.remote/mergeをgit config --unsetで削除しupstreamを解除した状態でsyncCommand(['pull'])"
+expect_return_shape = "exitせず、'Warning: git pull failed.'が出ない"
+
+[[condition]]
 id = "sync-pull.project-not-found-guidance"
 target_function = "pullFromSync"
 source = "docs/design/sync-setup.md pullFromSync のメッセージ変更節 テスト観点23"
-source_lines = "test/sync.test.ts:809"
+source_lines = "test/sync.test.ts:875"
 description = "存在しないプロジェクトIDのpullは案内2行を追加で表示する"
 given = "initSyncRepo()後にpullFromSync('ghost')"
 expect_return_shape = "'Project \"ghost\" not found in sync repository.'に加え'Run \"tm sync list\" to see available projects.'と'Run \"tm sync set --id <name>\" to use a different ID for this project.'の案内行を含む"
@@ -471,7 +491,7 @@ expect_return_shape = "'Project \"ghost\" not found in sync repository.'に加�
 id = "sync-util.get-sync-remote-url"
 target_function = "getSyncRemoteUrl"
 source = "docs/design/sync-setup.md status / getSyncRemoteUrl / isValidSyncId / isSafeGitUrl / help のテスト観点 24"
-source_lines = "test/sync.test.ts:822"
+source_lines = "test/sync.test.ts:888"
 description = "sync repoの状態3段階でgetSyncRemoteUrlが正しい値を返す"
 given = "未初期化 / 初期化のみ（remote未設定） / remote add後、の3状態"
 expect_return_shape = "未初期化でnull、初期化のみでnull、remote add後は設定したURL文字列"
@@ -480,7 +500,7 @@ expect_return_shape = "未初期化でnull、初期化のみでnull、remote add
 id = "sync-status.remote-line"
 target_function = "handleStatus"
 source = "docs/design/sync-setup.md handleStatus の変更節 / テスト観点25"
-source_lines = "test/sync.test.ts:831"
+source_lines = "test/sync.test.ts:897"
 description = "statusコマンドがRemote行を表示する"
 given = "origin未設定 / 設定済みの2状態でsyncCommand(['status'])"
 expect_return_shape = "未設定で'Remote: Not configured'、設定後は'Remote: <url>'を含む"
@@ -489,7 +509,7 @@ expect_return_shape = "未設定で'Remote: Not configured'、設定後は'Remot
 id = "sync-help.subcommand-help"
 target_function = "showHelp"
 source = "docs/design/sync-setup.md showHelp の更新節 / テスト観点26"
-source_lines = "test/sync.test.ts:843"
+source_lines = "test/sync.test.ts:909"
 description = "sync help出力にcloneサブコマンドと--remoteオプションが記載される"
 given = "syncCommand(['help'])"
 expect_return_shape = "出力に'clone <url>'と'--remote <url>'を含む"
@@ -507,7 +527,7 @@ expect_return_shape = "戻り値の文字列に'clone'を含む"
 id = "sync-util.is-valid-sync-id"
 target_function = "isValidSyncId"
 source = "docs/design/sync-setup.md syncStore.tsの新関数節 / テスト観点28"
-source_lines = "test/sync.test.ts:849"
+source_lines = "test/sync.test.ts:915"
 description = "許可文字（英数・.・_・-）のみのidをtrue、パストラバーサル・空文字等をfalseと判定する"
 given = "'my-project' 'v1.2_x' は許可文字のみで'.'/'..'とも異なる。'../x' 'a/b' '.' '..' '' はいずれか条件に反する"
 expect_return_shape = "'my-project' 'v1.2_x' → true。'../x' 'a/b' '.' '..' '' → false"
@@ -516,7 +536,7 @@ expect_return_shape = "'my-project' 'v1.2_x' → true。'../x' 'a/b' '.' '..' ''
 id = "sync-util.is-safe-git-url"
 target_function = "isSafeGitUrl"
 source = "docs/design/sync-setup.md syncStore.tsの新関数節 / テスト観点29。コードレビュー指摘によりgit remote helper構文を拒否しつつIPv6 SSH URLを許容"
-source_lines = "test/sync.test.ts:859"
+source_lines = "test/sync.test.ts:925"
 description = "空文字・単一'-'始まりの値・先頭がtransport::形式のremote helper構文をfalse、IPv6 SSH URLを含む通常URLをtrueと判定する"
 given = "'https://example.com/x.git' 'git@example.com:x.git' 'ssh://git@[2001:db8::1]/repo.git' は許可。'-oProxyCommand=x' '--upload-pack=x' は'-'始まり、''は空文字、'ext::sh -c \"touch /tmp/pwned\"'はremote helper構文"
 expect_return_shape = "通常URLとIPv6 SSH URL → true。'-oProxyCommand=x' '--upload-pack=x' '' 'ext::sh -c \"touch /tmp/pwned\"' → false"
@@ -534,5 +554,47 @@ decided_by = "claude"
 item = "後方互換性の確認項目テーブル（tm sync add/set/push/pull等の既存挙動不変の表）"
 source = "docs/design/sync-setup.md 後方互換性の確認項目節"
 reason = "同節の内容は上記の各条件（sync-add.*, sync-set.*, sync-push.*, sync-pull.*）で既に個別に条件化済みであり、テーブル自体は重複するサマリのため独立した条件を追加しない"
+decided_at = "2026-09-04"
+decided_by = "claude"
+
+[[excluded]]
+item = "git rm --cachedの--cachedセマンティクスによる作業ツリー保護（rm実行後もローカルのconfig.json/.gitignoreが作業ツリーに残ること）の直接アサーション"
+source = "docs/design/sync-setup.md 同期対象の限定: projects/ のみ（初期実装後の変更）節 変更内容"
+reason = "git自身の--cachedオプションの保証でありtm実装の分岐ではない。テストも直接アサートしておらず、観測可能な効果（remoteから除外されること）はsync-push.config-local-onlyで検証するため独立条件にしない（§8: 挙動に差を生まない内部処理に準ずる）"
+decided_at = "2026-09-04"
+decided_by = "claude"
+
+[[excluded]]
+item = "git rm --cached --ignore-unmatchにより、config.json/.gitignoreが未追跡の新規初期化repoでもrmが失敗せずpushが完了することの独立条件化"
+source = "docs/design/sync-setup.md 同期対象の限定: projects/ のみ（初期実装後の変更）節 変更内容"
+reason = "未追跡状態でのpush成功はsync-push.e2e-success（新規初期化repoでrmに失敗すればpushがexit 1する）で検証済みであり、同一テスト経路の側面のため独立条件を追加しない"
+decided_at = "2026-09-04"
+decided_by = "claude"
+
+[[excluded]]
+item = "initSyncRepoの.gitignore生成廃止の直接アサーション（initSyncRepo()実行後に.gitignoreが存在しないこと）"
+source = "docs/design/sync-setup.md 同期対象の限定: projects/ のみ（初期実装後の変更）節 変更内容"
+reason = "本変更の観測可能な効果はremoteに.gitignoreが含まれないことであり、sync-push.e2e-success / sync-push.config-local-onlyで検証済み。ローカルでの生成有無はCLIの入出力・分岐に差を生まないうえ、直接アサーションするテストも存在しないため独立条件にしない（§8: 挙動に差を生まない内部処理に準ずる）。config.jsonの生成継続は従来どおり"
+decided_at = "2026-09-04"
+decided_by = "claude"
+
+[[excluded]]
+item = "git pull --rebase origin HEADがupstream設定済みのrepoでも動作することの独立条件化"
+source = "docs/design/sync-setup.md 同期対象の限定: projects/ のみ（初期実装後の変更）節 変更内容"
+reason = "upstreamあり（clone直後）でのpull成功は既存のsync-pull.clone-e2eが同一コマンド経路で検証しており、新規条件は重複するため追加しない"
+decided_at = "2026-09-04"
+decided_by = "claude"
+
+[[excluded]]
+item = "ブートストラップ退避ロジックの残置（旧remoteからclone・adoptするPC-Bでremote側追跡config.jsonとローカル未追跡config.jsonの衝突が引き続き発生すること）と、新規初期化remoteではこの衝突自体が起きないこと"
+source = "docs/design/sync-setup.md 同期対象の限定: projects/ のみ（初期実装後の変更）節 ブートストラップ退避ロジックとの関係"
+reason = "退避ロジックの残置は既存のsync-adopt.pc-b-recovery-e2eが検証済み。新規remoteでの衝突非発生はsync-push.e2e-success（remoteのls-treeにconfig.jsonが無い）の帰結であり、独立条件にしない"
+decided_at = "2026-09-04"
+decided_by = "claude"
+
+[[excluded]]
+item = "push前のgit rm --cached --ignore-unmatchが失敗した場合のfail-fast（'Failed to stop tracking local sync files.'でexit 1する分岐）"
+source = "src/commands/sync.ts handlePushの実装差分（設計書の同期対象限定節には失敗時挙動の要求記述なし）"
+reason = "出典である設計書の変更内容節にこの失敗分岐の要求がなく、テストでの直接アサーションも無いため条件化しない。設計書に失敗時挙動の要求が追記された時点で条件化を検討する"
 decided_at = "2026-09-04"
 decided_by = "claude"

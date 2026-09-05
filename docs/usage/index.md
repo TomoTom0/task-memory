@@ -372,6 +372,8 @@ tm sync set --id new-name auto
 
 ### データの保存とpush
 
+同期対象は `projects/` 配下のタスクデータのみです。`config.json` などの同期クライアント設定は同期されません。
+
 ```bash
 # ローカルに保存
 tm sync save
