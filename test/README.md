@@ -15,6 +15,7 @@ vitestで実行する（`pnpm test`）。ファイルは `test/*.test.ts` にフ
 | `finish.test.ts` | `tm finish` |
 | `get.test.ts` | `tm get` |
 | `git_search.test.ts` | `findGitPath` |
+| `guard_snapshot.test.ts` | 実データ不変guardのsnapshot分岐（symlink参照実体・loop・absent遷移） |
 | `global_mode.test.ts` | globalモード |
 | `index.test.ts` | `isMainEntry`（symlink-aware direct invocation check）、`getHelpText` |
 | `list.test.ts` | `tm list` |

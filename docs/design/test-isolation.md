@@ -119,6 +119,7 @@ const UNSET_ENV_KEYS = [
     'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES',
     'GIT_CONFIG_COUNT',
     'GIT_CONFIG_PARAMETERS',
+    'GIT_TEMPLATE_DIR',
 ] as const;
 const UNSET_ENV_PATTERN = /^GIT_CONFIG_(KEY|VALUE)_\d+$/;   // GIT_CONFIG_KEY_n / GIT_CONFIG_VALUE_n
 
@@ -208,6 +209,7 @@ afterAll(() => {
 | `.gitconfig` の `[init] defaultBranch = main` | `git init` のデフォルトbranchがgit/OS設定に依存して不定（master/main）にならないようにする。sync.test.ts のbare remote群はすべて `main` 前提 |
 | `GIT_CONFIG_GLOBAL` / `GIT_CONFIG_NOSYSTEM` | HOME差し替えだけだと、ユーザー環境の `XDG_CONFIG_HOME` や `/etc/gitconfig`（例: `commit.gpgsign = true`）がfork内のgitへ漏れ、テストが環境依存で壊れる。sandbox `.gitconfig` を唯一のglobal config、system configを無効にして決定化する |
 | `GIT_DIR` / `GIT_WORK_TREE` / `GIT_COMMON_DIR` / `GIT_INDEX_FILE` / `GIT_OBJECT_DIRECTORY` / `GIT_ALTERNATE_OBJECT_DIRECTORIES` / `GIT_CONFIG_COUNT` / `GIT_CONFIG_PARAMETERS`（+ `GIT_CONFIG_KEY_n` / `GIT_CONFIG_VALUE_n`）の削除 | 開発shellの親環境にこれらが設定されていると、子プロセスのgitがsandbox外のrepo・worktree・index・object領域・追加config（`-c` 相当の設定注入を含む）を直接参照・更新しうる（HOME差し替えでは防げない別経路）。fork起動時に全て削除する |
+| `GIT_TEMPLATE_DIR` の削除 | 親環境でtemplate directory（実行可能hookを含む）が指定されていると、テスト内の `git init`（commit.test.ts・sync.test.ts等）がそのtemplateをsandbox repoへコピーし、以降のcommitでhookが実行されうる（テスト失敗・sandbox外への書き込み）。fork起動時に削除し、git標準のinstall prefix既定templateに固定する |
 
 ### fail-hard assertの失敗時挙動
 
@@ -261,17 +263,19 @@ const repoDbDir = statSync(gitPath).isDirectory() ? gitPath : REPO_ROOT;
 
 ### ハッシュ定義
 
-- **file**: `sha256(対象自身のmode + "\0" + ファイル内容のbyte列)`（対象自身のchmodも変更として検出する）
+監視対象pathを「相対パス（`/` 区切り）・種別・mode・内容」の行集合に直し、行を相対パス辞書順にソート・連結した全体の `sha256` をhashとする（行数をentries数として報告に使う）。監視対象自身がfileでもdirectoryでもこの行形式で統一する。
+
+- **file**: `<rel>\0file\0<mode>\0<sha256hex(内容)>` の1行（対象自身のchmodも変更として検出する）
 - **directory**（`~/.local/task-memory` はgit repoであるため、構成+内容全体の再帰ハッシュ）:
-  1. 対象ディレクトリ配下を再帰走査し、各エントリを「相対パス（`/` 区切り）・種別・mode・内容」の1行に直す。集計root自体のmodeもrelPathが空の行（`\0dir\0<mode>`）として含める（対象自身のchmod検知）
+  1. 対象ディレクトリ配下を再帰走査し、各エントリを行に直す。集計root自体のmodeもrelPathが空の行（`\0dir\0<mode>`）として含める（対象自身のchmod検知）
      - file: `<rel>\0file\0<mode>\0<sha256hex(内容)>`
-     - symlink: `<rel>\0symlink\0<mode>\0<readlinkのターゲット文字列>`
      - directory: `<rel>\0dir\0<mode>` （内容は配下の行で表現）
      - その他（fifo等）: `<rel>\0special\0<mode>`
      - `<mode>` は `lstatSync(entry).mode` を8進文字列化したもの（permission bitsを含む。chmodによる改変も「変更」として検出する）
-  2. 行を**相対パス辞書順にソート**して連結し、全体の `sha256` をdirectory hashとする
-  3. 行数をentries数として報告に使う
-- **走査の原則（symlinkを辿らない）**: 種別判定は `readdirSync(dir, { withFileTypes: true })` の `Dirent`（linkを辿らない）で行い、mode取得は全エントリと集計root自体に対する `lstatSync` を使う。`statSync`・symlinkを辿る通常の再帰walkerは、`~/.local/task-memory` 配下に外部（実HOME等）へのsymlinkがあった場合に**sandbox外・監視意図外の実体をハッシュ対象に取り込みうる**ため使わない。symlinkエントリは「mode + ターゲット文字列」のみをハッシュに入れ、**再帰しない**（リンク先の実体は保護対象外）
+- **symlink（監視対象自身・配下entryの両方）**: `<rel>\0symlink\0<mode>\0<readlinkのターゲット文字列>` 行に加えて、**参照実体を `${rel}/` prefix（top-levelはrel=''のまま）配下の行として再帰的に辿る**。理由: 本番コードの書き込み（`writeFileSync` 等のNode fs API・子プロセスgit）はsymlinkを辿って参照実体へ届くため、リンクテキストのみでは実体の変更を検知できず隔離失敗が漏れる（参照実体のfile行・directory走査は通常の行形式と同一）
+  - 参照実体が解決できない（broken link・loop）場合は `${rel}/\0absent` 行として固定し、run中にlink越しに実体が作られれば不一致として検知する
+  - 参照実体がfifo等のspecialの場合は内容を読まない（読み取りがblockしうるため。種別+modeのみ）
+- **走査の原則（同一実体の再訪防止）**: 種別判定は `readdirSync(dir, { withFileTypes: true })` の `Dirent`（linkを辿らない）で行い、mode取得は `lstatSync`（参照実体の判定・modeは `statSync`）。directory実体は `dev:ino` でvisited管理し、同一実体の再訪（symlink loop・複数linkからの同一dir参照）は `dir-cycle` marker行で打ち切って無限再帰を防ぐ。子の走査は**名前順**に行い、marker行の現れ方を決定化する（visitedの状態に行内容が依存するため、最終sortだけでは決定化できない）
 - **mtimeは含めない**（読み取りやtouchによる偽陽性を避ける。内容・構成・permissionで「テストが書いたか」を判定する）
 - **保護範囲外**: 所有者（uid/gid）・ACL・xattrはハッシュに入れない。理由: 本guardの目的はtmのデータ経路による実データ破壊の検知であり、tmが書きうるのは内容・構成・permissionの範囲に収まるため。uid/ACL/xattr単独の変更を検知できないことは限界として受容する（「既知の限界」参照）
 - **absent**: hashを計算せず `absent` を記録

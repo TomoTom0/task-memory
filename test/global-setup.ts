@@ -28,72 +28,92 @@ function buildTargets(): Target[] {
     ];
 }
 
-function fileSnapshot(path: string, mode: string): Snapshot {
+// Stats型（lstatSync・statSyncの戻り値。型安全規約に従いasキャストせずReturnTypeで受ける）
+type StatsLike = ReturnType<typeof lstatSync>;
+
+function fileLine(path: string, rel: string, mode: string): string {
     // 対象自身のmode（chmod検知）+ 内容のsha256
-    const content = readFileSync(path);
-    const hash = createHash('sha256').update(`${mode}\0`).update(content).digest('hex');
-    return { state: 'present', hash, entries: 1 };
+    const contentHash = createHash('sha256').update(readFileSync(path)).digest('hex');
+    return `${rel}\0file\0${mode}\0${contentHash}`;
 }
 
-function symlinkSnapshot(path: string, mode: string): Snapshot {
-    // symlinkはmode + ターゲット文字列のみをハッシュに入れ、リンク先の実体は再帰しない
-    // （監視意図外の実体をハッシュ対象に取り込まない）
+// 「このpathへ書き込みが届くものすべて」を行列表現にする。本番コードの書き込み
+// （writeFileSync等・子プロセスgit）はsymlinkを辿って参照実体へ届くため、link自身の
+// 情報に加えて参照実体も行に含める（リンクテキストのみでは実体の変更を検知できない）。
+// mtimeは含めない（読み取りやtouchによる偽陽性を避ける）
+function snapshotLines(path: string, rel: string, visitedDirs: Set<string>): string[] {
+    let stat: StatsLike;
+    try {
+        stat = lstatSync(path);
+    } catch {
+        return [`${rel}\0absent`];
+    }
+    const mode = stat.mode.toString(8);
+    if (stat.isFile()) return [fileLine(path, rel, mode)];
+    if (stat.isDirectory()) return directoryLines(path, rel, stat, visitedDirs);
+    if (stat.isSymbolicLink()) return symlinkLines(path, rel, mode, visitedDirs);
+    return [`${rel}\0special\0${mode}`];
+}
+
+function directoryLines(path: string, rel: string, stat: StatsLike, visitedDirs: Set<string>): string[] {
+    // 構成+内容全体の再帰ハッシュ用の行。種別判定はDirent（linkを辿らない）、mode取得は
+    // lstatSync。集計root自体のmodeもrelPathが空の行として含め、対象自身のchmodを検知する。
+    // 同一実体（dev:ino）の再訪はsymlink loop等による無限再帰を防ぐためmarker行で打ち切り、
+    // 子の走査は名前順で行いmarker行の現れ方を決定化する（visitedDirsの状態に行内容が依存し、
+    // 最終sortだけでは決定化できないため）
+    const dirKey = `${stat.dev}:${stat.ino}`;
+    if (visitedDirs.has(dirKey)) return [`${rel}\0dir-cycle\0${stat.mode.toString(8)}`];
+    visitedDirs.add(dirKey);
+    const lines: string[] = [`${rel}\0dir\0${stat.mode.toString(8)}`];
+    const entries = readdirSync(path, { withFileTypes: true })
+        .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    for (const entry of entries) {
+        const entryRel = rel === '' ? entry.name : `${rel}/${entry.name}`;
+        lines.push(...snapshotLines(join(path, entry.name), entryRel, visitedDirs));
+    }
+    return lines;
+}
+
+function symlinkLines(path: string, rel: string, mode: string, visitedDirs: Set<string>): string[] {
+    // link自身はmode + ターゲット文字列（retarget検知）。参照実体は`${rel}/` prefix（top-levelは
+    // rel=''のまま）の配下の行として辿る。参照実体が解決できない（broken link・loop）場合は
+    // 「absent」行として固定し、run中にlink越しに実体が作られれば不一致として検知する。
+    // 参照実体がfifo等のspecialの場合は内容を読まない（blockしうるため種別+modeのみ）
     const target = readlinkSync(path);
-    const hash = createHash('sha256').update(`symlink\0${mode}\0${target}`).digest('hex');
-    return { state: 'present', hash, entries: 1 };
+    const lines = [`${rel}\0symlink\0${mode}\0${target}`];
+    const referentRel = rel === '' ? '' : `${rel}/`;
+    let referentStat: StatsLike;
+    try {
+        referentStat = statSync(path);
+    } catch {
+        return [...lines, `${referentRel}\0absent`];
+    }
+    const referentMode = referentStat.mode.toString(8);
+    if (referentStat.isFile()) {
+        lines.push(fileLine(path, referentRel, referentMode));
+    } else if (referentStat.isDirectory()) {
+        lines.push(...directoryLines(path, referentRel, referentStat, visitedDirs));
+    } else {
+        lines.push(`${referentRel}\0special\0${referentMode}`);
+    }
+    return lines;
 }
 
-function directorySnapshot(path: string, mode: string): Snapshot {
-    // 構成+内容全体の再帰ハッシュ。種別判定はDirent（linkを辿らない）、mode取得は
-    // lstatSync（statSyncやsymlinkを辿るwalkerは監視意図外の実体を取り込みうるため使わない）。
-    // mtimeは含めない（読み取りやtouchによる偽陽性を避ける）。集計root自体のmodeも
-    // relPathが空の行として含め、対象自身のchmodを検知する
-    const lines: string[] = [`\0dir\0${mode}`];
-    const walk = (current: string, rel: string): void => {
-        for (const entry of readdirSync(current, { withFileTypes: true })) {
-            const entryPath = join(current, entry.name);
-            const relPath = rel === '' ? entry.name : `${rel}/${entry.name}`;
-            const mode = lstatSync(entryPath).mode.toString(8);
-            if (entry.isDirectory()) {
-                lines.push(`${relPath}\0dir\0${mode}`);
-                walk(entryPath, relPath);
-            } else if (entry.isFile()) {
-                const fileHash = createHash('sha256').update(readFileSync(entryPath)).digest('hex');
-                lines.push(`${relPath}\0file\0${mode}\0${fileHash}`);
-            } else if (entry.isSymbolicLink()) {
-                lines.push(`${relPath}\0symlink\0${mode}\0${readlinkSync(entryPath)}`);
-            } else {
-                lines.push(`${relPath}\0special\0${mode}`);
-            }
-        }
-    };
-    walk(path, '');
-    // 行を相対パス辞書順にソートして連結し、全体のsha256をdirectory hashとする
+// 存在しないことも状態の一部とする（absent -> present も不一致）
+export function snapshotPath(path: string): Snapshot {
+    const lines = snapshotLines(path, '', new Set());
+    if (lines.length === 1 && lines[0] === '\0absent') return { state: 'absent' };
+    // 行を相対パス辞書順にソートして連結し、全体のsha256をhashとする
     lines.sort();
     const hash = createHash('sha256').update(lines.join('\n')).digest('hex');
     return { state: 'present', hash, entries: lines.length };
 }
 
-// 存在しないことも状態の一部とする（absent -> present も不一致）
-function snapshotPath(path: string): Snapshot {
-    let stat: ReturnType<typeof lstatSync>;
-    try {
-        stat = lstatSync(path);
-    } catch {
-        return { state: 'absent' };
-    }
-    const mode = stat.mode.toString(8);
-    if (stat.isFile()) return fileSnapshot(path, mode);
-    if (stat.isDirectory()) return directorySnapshot(path, mode);
-    if (stat.isSymbolicLink()) return symlinkSnapshot(path, mode);
-    const hash = createHash('sha256').update(`special\0${mode}`).digest('hex');
-    return { state: 'present', hash, entries: 1 };
-}
-
 function describeSnapshot(snap: Snapshot, path: string): string {
     if (snap.state === 'absent') return 'absent';
     try {
-        if (lstatSync(path).isDirectory()) {
+        // symlink対象は参照実体をhash対象に含めるため、表示の種別判定もlinkを辿る
+        if (statSync(path).isDirectory()) {
             return `${snap.hash.slice(0, 12)}...(${snap.entries} entries)`;
         }
     } catch {
