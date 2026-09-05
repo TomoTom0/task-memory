@@ -15,4 +15,13 @@ function rawMdPlugin(): Plugin {
 
 export default defineConfig({
     plugins: [rawMdPlugin()],
+    test: {
+        environment: 'node',
+        pool: 'forks',
+        isolate: true,
+        fileParallelism: true,                          // テスト隔離の前提（defaultと同一）の明示
+        poolOptions: { forks: { singleFork: false } },  // 同上（docs/design/test-isolation.md）
+        setupFiles: ['./test/setup.ts'],
+        globalSetup: ['./test/global-setup.ts'],
+    },
 });

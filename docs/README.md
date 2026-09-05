@@ -32,6 +32,7 @@
 - `review.md` - review機能
 - `blocked.md` - blocked状態・gate（開始条件）
 - `sync-setup.md` - tm sync 初回セットアップ改善（clone/remote設定/自動adopt）
+- `test-isolation.md` - テスト隔離の共通基盤化（sandbox setup・実データ不変guard）
 
 ### dev/
 開発者向けドキュメント。

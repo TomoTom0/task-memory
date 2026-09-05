@@ -1,25 +1,17 @@
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { join } from 'path';
+import { homedir } from 'os';
 import { mkdirSync, rmdirSync } from 'fs';
 
-vi.mock('os', () => ({
-    homedir: () => '/tmp/fake-home',
-    default: { homedir: () => '/tmp/fake-home' },
-}));
-
 describe('findGitPath', () => {
-    const root = '/tmp/fake-home';
+    // sandbox HOME配下のwork領域にfixtureを作る（homedir()はsetup.tsによりsandbox HOME）
+    const root = join(homedir(), 'work', `git-search-${Date.now()}`);
     const project = join(root, 'project');
     const subdir = join(project, 'subdir');
 
     beforeAll(() => {
-        try { mkdirSync(root, { recursive: true }); } catch { }
-        try { mkdirSync(join(project, '.git'), { recursive: true }); } catch { }
-        try { mkdirSync(subdir, { recursive: true }); } catch { }
-    });
-
-    afterAll(() => {
-        // intentionally not cleaning up /tmp/fake-home to avoid rm -rf /tmp
+        mkdirSync(join(project, '.git'), { recursive: true });
+        mkdirSync(subdir, { recursive: true });
     });
 
     it('should find .git in current directory', async () => {

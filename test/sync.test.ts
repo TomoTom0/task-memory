@@ -17,50 +17,20 @@ import {
 import { loadStore, saveStore } from '../src/store';
 import type { TaskStore, Task } from '../src/types';
 import { join, dirname } from 'path';
+import { homedir } from 'os';
 import { existsSync, mkdirSync, rmSync, mkdtempSync, writeFileSync, readFileSync, chmodSync } from 'fs';
 import { spawnSync } from 'child_process';
-import { createTempProject, removeTempDir } from './helpers';
+import { createTempProject, removeTempDir, getSandboxWorkDir } from './helpers';
 
-// モジュール読み込み時（chdir前）のcwdを固定する。テスト本体はTASK-12用の
-// describeブロック内でprocess.chdir()するため、ヘルパー関数内でprocess.cwd()を
-// 都度参照すると呼び出し時のchdir先を見てしまいENOENTになる。
-const TMP_ROOT = join(process.cwd(), 'tmp');
+// 一時領域のroot。setup.tsがsandbox HOME配下に作成済みのwork領域を指すため、
+// テスト本体のprocess.chdir()の影響を受けない
+const TMP_ROOT = getSandboxWorkDir();
 
-// テスト隔離（HOME差し替え）: os.homedir() はPOSIXで $HOME を参照するため、
-// syncStore側のパス遅延計算化と組み合わせてsync repo全体を隔離する。
-// 隔離先HOMEには実ユーザーの~/.gitconfigが存在しないため、git commitがidentity不明で
-// 失敗しないようGIT_AUTHOR_*/GIT_COMMITTER_*環境変数で明示的に補う。
-let originalHome: string | undefined;
-let homeDir: string;
-let originalGitEnv: Record<string, string | undefined>;
-const GIT_IDENTITY_ENV = ['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL'] as const;
-
-beforeEach(() => {
-    mkdirSync(TMP_ROOT, { recursive: true });
-    originalHome = process.env.HOME;
-    homeDir = mkdtempSync(join(TMP_ROOT, 'sync-test-home-'));
-    process.env.HOME = homeDir;
-    // ローカルのgit initのデフォルトブランチ名はgit/OS設定依存（master/main等)で不定。
-    // テスト内のbare remoteはすべてbranch='main'前提のため、隔離HOME側でも合わせる。
-    writeFileSync(join(homeDir, '.gitconfig'), '[init]\n\tdefaultBranch = main\n', 'utf-8');
-
-    originalGitEnv = {};
-    for (const key of GIT_IDENTITY_ENV) originalGitEnv[key] = process.env[key];
-    process.env.GIT_AUTHOR_NAME = 'test';
-    process.env.GIT_AUTHOR_EMAIL = 'test@example.com';
-    process.env.GIT_COMMITTER_NAME = 'test';
-    process.env.GIT_COMMITTER_EMAIL = 'test@example.com';
-});
-
+// テストごとにsync repo領域を空に戻す（旧HOME差し替えブロックのafterEachが担っていた
+// 「各テストが未同期状態から始まる」シナリオ前提の構築。環境隔離はsetup.tsが担うまま。
+// homedir()はこの時点でsandbox HOMEを返すため掃除対象はsandbox配下に限られる）
 afterEach(() => {
-    if (originalHome === undefined) delete process.env.HOME;
-    else process.env.HOME = originalHome;
-    rmSync(homeDir, { recursive: true, force: true });
-
-    for (const key of GIT_IDENTITY_ENV) {
-        if (originalGitEnv[key] === undefined) delete process.env[key];
-        else process.env[key] = originalGitEnv[key];
-    }
+    rmSync(join(homedir(), '.local', 'task-memory'), { recursive: true, force: true });
 });
 
 function captureConsole(fn: () => void): { logs: string[]; errors: string[] } {

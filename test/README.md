@@ -15,6 +15,7 @@ vitestで実行する（`pnpm test`）。ファイルは `test/*.test.ts` にフ
 | `finish.test.ts` | `tm finish` |
 | `get.test.ts` | `tm get` |
 | `git_search.test.ts` | `findGitPath` |
+| `guard_snapshot.test.ts` | 実データ不変guardのsnapshot分岐（symlink参照実体・loop・absent遷移） |
 | `global_mode.test.ts` | globalモード |
 | `index.test.ts` | `isMainEntry`（symlink-aware direct invocation check）、`getHelpText` |
 | `list.test.ts` | `tm list` |
@@ -25,6 +26,27 @@ vitestで実行する（`pnpm test`）。ファイルは `test/*.test.ts` にフ
 | `store.test.ts` | `saveTasks` のorder重複解消 |
 | `sync.test.ts` | `syncStore` / `syncCommand`（`tm sync` サブコマンド群） |
 | `update.test.ts` | `tm update` の引数パース、blocked/gate |
+| `global-setup.ts` | 実データ不変guard（globalSetup/teardown。run前後で監視対象5点のhash比較） |
+| `helpers.ts` | sandbox配下生成のシナリオ構築（createTempProject / getSandboxWorkDir / removeTempDir） |
+| `setup.ts` | テスト隔離基盤（sandbox構築。全テストファイルのHOME・cwd差し替え） |
+
+## テスト隔離（test/setup.ts）
+
+隔離の唯一の担いは `test/setup.ts`（HOME差し替え・CODING_AGENT_ROOT/git参照系env削除・
+GIT_*環境変数・sandbox cwdへのchdir）。**個別テストファイルは隔離コード（HOME差し替え・
+env操作・os mock）を書かない**。sandbox構造・各設定の理由は `docs/design/test-isolation.md`
+を参照する。
+
+- 全テストファイルのHOME・cwdは `/tmp/tm-test-sandbox-*` 配下に限定され、実データ
+  （repo側DB 2点・home側 3点）へは到達しない。sandboxはworker終了時（SIGTERM handler）
+  に自己削除される
+- 実データguard（`test/global-setup.ts`）がrun前後で監視対象5点（repo側2点+home側3点）の
+  存在+内容hashを比較し、不一致ならrunをexit code 1で失敗させる（常設）
+- **前提崩しオプションの注意**: `--no-isolate`、`--pool=threads`、`--singleFork`、
+  `--no-file-parallelism` 等のfork/isolate前提を崩すCLI上書きは、sandboxの前提
+  （テストファイルごとの独立workerでenv・cwdが初期化されること）を壊すためサポート外。
+  config側で明示済みの値（`isolate: true`・`fileParallelism: true`・`singleFork: false`）を
+  CLIで上書きして実行しない
 
 ## test-structure（条件書によるテスト管理）
 
