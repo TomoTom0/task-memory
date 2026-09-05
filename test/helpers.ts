@@ -1,12 +1,15 @@
 import { join } from 'path';
+import { homedir } from 'os';
 import { existsSync, mkdirSync, rmSync } from 'fs';
 import { randomUUID } from 'crypto';
 
-const TMP_ROOT = join(process.cwd(), 'tmp');
+// sandboxのwork領域（setup.tsが home/work/project を作成済みであるため必ず実在する）
+export function getSandboxWorkDir(): string {
+    return join(homedir(), 'work');
+}
 
 export function createTempProject(): string {
-    const dir = join(TMP_ROOT, `test-${Date.now()}-${randomUUID().slice(0, 10)}`);
-    mkdirSync(dir, { recursive: true });
+    const dir = join(getSandboxWorkDir(), `test-${Date.now()}-${randomUUID().slice(0, 10)}`);
     mkdirSync(join(dir, '.git'), { recursive: true });
     return dir;
 }
