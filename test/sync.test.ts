@@ -765,7 +765,7 @@ describe('sync clone/add/set/push/pull (TASK-12 test-first)', () => {
             expect(ls.stdout).toContain('projects/test-project.json');
         });
 
-        it('[covers:sync-push.git-add-fails] git add .の失敗を検知しcommit/pushへ進まずexit 1する', () => {
+        it('[covers:sync-push.git-add-fails] git add -- projectsの失敗を検知しcommit/pushへ進まずexit 1する', () => {
             const remote = createBareRemote();
             runExpectingExit(() => syncCommand(['add', '--id', 'test-project', '--remote', remote]));
             const objectsDir = join(getSyncDir(), '.git', 'objects');

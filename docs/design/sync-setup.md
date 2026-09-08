@@ -62,7 +62,7 @@ function getConfigFile(): string {
 影響する既存関数（いずれも関数内で `const syncDir = getSyncDir();` を取り直すのみ、シグネチャ不変）:
 
 - `isSyncInitialized()` … `existsSync(syncDir)` && `existsSync(join(syncDir, '.git'))`
-- `initSyncRepo()` … mkdir/git init/config.json/.gitignore の各パス
+- `initSyncRepo()` … mkdir/git init/config.json の各パス
 - `loadGlobalConfig()` / `saveGlobalConfig()` … CONFIG_FILE → `getConfigFile()`
 - `getProjectFilePath()` … `join(getProjectsDir(), ...)`
 - `pullFromSync()` / `listSyncedProjects()` … 同上
@@ -153,7 +153,7 @@ export function isValidSyncId(id: string): boolean;
 
 ### ブートストラップファイルの扱い（2回目レビュー指摘1対応）
 
-`initSyncRepo()` は `config.json` と `.gitignore` を無条件に生成する（[src/syncStore.ts:46-55](/home/tomo/work/app/cli/task-memory/src/syncStore.ts:46)）。PC-A側は `push` 時に `git add .` でこれらもcommit・remoteへpush済みのため、PC-Bが `add` 直後に同名の未追跡ファイルを持つ状態で `checkout -B` すると、git は「未追跡ファイルが上書きされる」として必ず失敗する。これは「`add`→`set --remote`で復旧完結」という本設計の主目的と両立しない致命的な欠陥だった。
+設計当時の `initSyncRepo()` は `config.json` と `.gitignore` を無条件に生成し、PC-A側も `push` 時に `git add .` でこれらをcommit・remoteへpushしていた。そのためPC-Bが `add` 直後に同名の未追跡ファイルを持つ状態で `checkout -B` すると、git は「未追跡ファイルが上書きされる」として必ず失敗する。これは「`add`→`set --remote`で復旧完結」という本設計の主目的と両立しない致命的な欠陥だった。（`.gitignore` の生成とpushへのcommitは「同期対象の限定: projects/ のみ」変更で廃止されたが、旧remoteはこれらを追跡済みのまま残るため、以下の退避ロジックは現行でも必要）
 
 3回目レビュー指摘（高）対応: 当初案は「内容を問わず削除」だったが、`.gitignore` は利用者が追記し得る・`config.json` も公開APIの `saveGlobalConfig()` 経由で書き換わり得るため、「削除して問題ない」という前提は成立しない。**削除ではなく、常にリネームで退避**する（内容の完全一致確認は将来のconfig.json形状変更に弱く不採用。退避なら内容を問わず無条件に非破壊）。
 
@@ -759,10 +759,10 @@ afterEach(() => {
 
 ### 自動adopt（applyAutoAdopt）のテスト観点
 
-16e. PC-B復旧E2E（指摘1の主眼・2回目レビューで再修正）: bare remoteでwork cloneを作り、`config.json` を含む形で `git add . && git commit && push`（PC-Aの`push`が実際に生成する内容を再現）。ローカルでは `syncCommand(['add', '--id', 'shared'])`（remote無し・`initSyncRepo()`由来の未追跡`config.json`/`.gitignore`が存在し、commitも無い状態）→ 続けて `syncCommand(['set', '--remote', remotePath])` → ログに `Adopted existing data from remote.` を含み、`hasSyncProject('shared') === true`。以後 `syncCommand(['pull'])` がexitせず成功する。**本ケースはブートストラップファイル除去（`config.json`/`.gitignore`の未追跡時削除）が無いと`checkout -B`が失敗して再現しないため、その除去ロジックの直接的な回帰確認を兼ねる**
+16e. PC-B復旧E2E（指摘1の主眼・2回目レビューで再修正）: bare remoteでwork cloneを作り、`config.json` を含む形で `git add . && git commit && push`（旧版PC-Aの`push`が生成していた内容の再現。現行のpushは`projects/`配下のみをcommitする）。ローカルでは `syncCommand(['add', '--id', 'shared'])`（remote無し・`initSyncRepo()`由来の未追跡`config.json`が存在し、commitも無い状態）→ 続けて `syncCommand(['set', '--remote', remotePath])` → ログに `Adopted existing data from remote.` を含み、`hasSyncProject('shared') === true`。以後 `syncCommand(['pull'])` がexitせず成功する。**本ケースはブートストラップファイル退避（`config.json`/`.gitignore`の未追跡時リネーム退避）が無いと`checkout -B`が失敗して再現しないため、その退避ロジックの直接的な回帰確認を兼ねる**
 16e2. 非main/masterブランチの解決（指摘2・2回目）: bare remoteのデフォルトブランチを `trunk` 等main/master以外の名前で作成し、他に古い保守用ブランチ（例: `legacy`）も存在する状態で16eと同じ手順を実行 → `origin/legacy` ではなく `origin/trunk`（remoteのHEAD symrefが指す方）がadoptされること（`git -C <SYNC_DIR> branch --show-current === 'trunk'`）を確認。`git branch -r` の表示順に依存する誤adoptが再発しないことの回帰確認
 16f. remoteが空: bare remoteをcommit無しで作成 → `add --remote <bare>` → ログに `Remote repository has no commits yet.`、exitしない
-16g. 衝突で失敗（真のローカルデータとの衝突）: `projects/shared.json`（未commit・remoteと同名で内容異なる。ブートストラップファイルではなく実データ）を用意した状態でremote接続 → `checkout -B` が失敗する状況を再現し、exit 1・`could not be adopted automatically` を含む。ローカルファイルが変更されず残っていることを確認（非破壊の確認）。`config.json`/`.gitignore`は削除対象だがこのファイルは対象外であることの区別を確認
+16g. 衝突で失敗（真のローカルデータとの衝突）: `projects/shared.json`（未commit・remoteと同名で内容異なる。ブートストラップファイルではなく実データ）を用意した状態でremote接続 → `checkout -B` が失敗する状況を再現し、exit 1・`could not be adopted automatically` を含む。ローカルファイルが変更されず残っていることを確認（非破壊の確認）。`config.json`/`.gitignore`は退避対象だがこのファイルは対象外であることの区別を確認
 16h. 既にcommitあり（復旧対象外）: `add --remote` → `push` で1コミット作成済みの状態から `set --remote <別url>` → adoptは走らない（`hasSyncCommits() === true` のため）。従来の `Remote origin changed:` メッセージのみ
 16l. store層のid防御（指摘4・2回目）: `syncCommand(['add', '--id', 'x', '--save'])` で同期を有効化した後、`loadSyncConfig()`/`saveSyncConfig()`を直接使わずconfig.json相当のファイルを手編集する体で `syncConfig.id = '../evil'` を注入した状態を作り、`saveToSync('../evil', store)` / `pullFromSync('../evil')` / `hasSyncProject('../evil')` を直接呼ぶ → CLI層を経由せずとも `false` / `null` / `false` を返し、`projects/`外へのファイル操作が起きないことを確認（CLI検証をバイパスする経路の防御確認）
 
