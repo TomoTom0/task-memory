@@ -820,9 +820,12 @@ HOME差し替えをファイル全体のbeforeEach/afterEachに変更したこ�
 
 ### 変更内容
 
-- `handlePush()`: stage範囲を `git add .` から `git add -- projects` に限定。加えて旧版がremoteへcommit済みのこれらファイルをindexから外すため、push前に `git rm --cached --ignore-unmatch config.json .gitignore` を実行する。`--cached` のため作業ツリー上のファイルは削除されず、`--ignore-unmatch` のため旧版repoで未追跡の場合も失敗しない。この解除をcommitするため、旧版で初期化されたrepoも次回のpushでremoteから排除される
+- `handlePush()`: stage範囲を `git add .` から `git add -- projects` に限定。加えて旧版がremoteへcommit済みのローカル設定ファイルをindexから外すため、push前に `git ls-files` で列挙した追跡済みパスのうち `projects/` 配下以外をすべて `git rm --cached --ignore-unmatch -- <paths>` でindexから外す（PR#44レビュー指摘対応: 旧版の `git add .` が `config.json`/`.gitignore` 以外のトップレベルファイルを追跡していた場合や `tm git` 経由でstageされたファイルも、2ファイルの特別扱いではindexに残りcommitされ続けるため、ファイル名の列挙ではなくls-files由来の一括除外とする）。`--cached` のため作業ツリー上のファイルは削除されず、この解除をcommitに含めるため、旧版で初期化されたrepoも次回のpushでremoteから排除される
 - `initSyncRepo()`: `.gitignore` の生成を廃止（「ブートストラップファイルの扱い」記載のうち `.gitignore` 生成は本変更で削除。`config.json` はローカル設定として引き続き生成する）
 - `handlePull()`: `git pull --rebase` を `git pull --rebase origin HEAD` に変更。旧バージョンで `git init` 由来の初期化をしたsync repoは現在ブランチにupstreamが設定されておらず、upstream暗黙解決のpullが失敗する。originの既定ブランチを明示すれば両状態（upstreamあり/なし）で動作する
+- `handlePull()`: projects/外ファイルの受信側保護（PR#44レビュー指摘対応）。`git rm --cached` はcommitを作る側のクライアントしか保護せず、他PCの新版pushが生成したprojects/外ファイルの削除commitは、それをpullする既存cloneでは通常の削除として作業ツリーへ適用される。このためpull前に `snapshotFilesOutsideProjects()`（syncStore新関数）でprojects/外の追跡済みファイルの作業ツリー内容を保存し、pull後に `restoreMissingFilesOutsideProjects()`（同）で欠損分を書き戻す。復元されたファイルはuntrackedとなり、同期対象（projects/のみ）の外のため以後のpushには含まれない。保護対象はpullの直前時点で追跡済みのパスに限る（未追跡ファイルはrebaseで削除されないため保護不要）
+
+`snapshotFilesOutsideProjects` / `restoreMissingFilesOutsideProjects` / 列挙の共通処理となる `listTrackedPathsOutsideProjects` は `syncStore.ts` の公開関数として追加し、handlePush・handlePullの両方から使う。
 
 ### ブートストラップ退避ロジックとの関係
 
