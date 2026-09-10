@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { join } from 'path';
 import { homedir } from 'os';
-import { mkdirSync, existsSync } from 'fs';
+import { mkdirSync, existsSync, symlinkSync } from 'fs';
 
 describe('global mode', () => {
     const origArgv = process.argv;
@@ -229,6 +229,30 @@ describe('global mode', () => {
 
             const { getDbPath, NotGitError } = await import('../src/store');
             expect(() => getDbPath()).toThrow(NotGitError);
+        });
+
+        it('should resolve symlinked CODING_AGENT_ROOT to its real path before ascending', async () => {
+            // agentRootがmonorepoサブディレクトリへのsymlinkの構成。
+            // resolve()は字句的正規化のみのため、realpathSyncでリンク先に解決してから
+            // 親を遡上しないとリンク元の親（sandbox home）側を探索してNotGitErrorになる
+            const repoRoot = join(homedir(), 'work', 'tm-agent-symlink-' + Date.now());
+            const agentRoot = join(repoRoot, 'packages', 'sub');
+            mkdirSync(join(repoRoot, '.git'), { recursive: true });
+            mkdirSync(agentRoot, { recursive: true });
+            // リンク元はsandbox home直下（非git）。リンク先のみがmonorepo配下
+            const linkPath = join(homedir(), 'tm-agent-symlink-link-' + Date.now());
+            symlinkSync(agentRoot, linkPath);
+
+            process.env.CODING_AGENT_ROOT = linkPath;
+            useNonGitCwd();
+
+            const { getDbPath } = await import('../src/store');
+            const result = getDbPath();
+            expect(result).toBe(join(repoRoot, '.git', 'task-memory.json'));
+
+            // reviewStoreも同一のresolveGitPathを経由するため同様にリンク先へ遡上する
+            const { getReviewDbPath } = await import('../src/reviewStore');
+            expect(getReviewDbPath()).toBe(join(repoRoot, '.git', 'review-memory.json'));
         });
     });
 });
