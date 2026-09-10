@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { join } from 'path';
 import { homedir } from 'os';
-import { mkdirSync, existsSync } from 'fs';
+import { mkdirSync, existsSync, symlinkSync } from 'fs';
 
 describe('global mode', () => {
     const origArgv = process.argv;
@@ -160,6 +160,99 @@ describe('global mode', () => {
             const { getDbPath } = await import('../src/store');
             const result = getDbPath();
             expect(result).toBe(join(cwdDir, '.git', 'task-memory.json'));
+        });
+
+        it('should fall back to cwd when CODING_AGENT_ROOT is an empty string', async () => {
+            // 空文字列は未設定として扱い、cwd基準の探索へフォールバックする
+            process.env.CODING_AGENT_ROOT = '';
+            const cwdDir = join(homedir(), 'work', 'tm-cwd-empty-' + Date.now());
+            mkdirSync(join(cwdDir, '.git'), { recursive: true });
+
+            Object.defineProperty(process, 'cwd', {
+                value: () => cwdDir,
+                configurable: true,
+            });
+
+            const { getDbPath } = await import('../src/store');
+            const result = getDbPath();
+            expect(result).toBe(join(cwdDir, '.git', 'task-memory.json'));
+        });
+
+        it('should ascend to parent .git when CODING_AGENT_ROOT is a monorepo subdirectory', async () => {
+            // agentRoot直下には.gitが無く、repoルートにのみあるmonorepo構成
+            const repoRoot = join(homedir(), 'work', 'tm-agent-monorepo-' + Date.now());
+            const agentRoot = join(repoRoot, 'packages', 'sub');
+            mkdirSync(join(repoRoot, '.git'), { recursive: true });
+            mkdirSync(agentRoot, { recursive: true });
+
+            process.env.CODING_AGENT_ROOT = agentRoot;
+            // cwdは非gitのため、解決はagentRootからの遡上のみに依存する
+            useNonGitCwd();
+
+            const { getDbPath } = await import('../src/store');
+            const result = getDbPath();
+            expect(result).toBe(join(repoRoot, '.git', 'task-memory.json'));
+
+            // reviewStoreも同一のresolveGitPathを経由するため同様に遡上する
+            const { getReviewDbPath } = await import('../src/reviewStore');
+            expect(getReviewDbPath()).toBe(join(repoRoot, '.git', 'review-memory.json'));
+        });
+
+        it('should resolve relative CODING_AGENT_ROOT against cwd', async () => {
+            // resolve()はprocess.cwd()基準で相対パスを絶対化するため、
+            // cwdモック先をrepoルートとし、その配下にpackages/subを配置して整合させる
+            const repoRoot = join(homedir(), 'work', 'tm-agent-relative-' + Date.now());
+            mkdirSync(join(repoRoot, '.git'), { recursive: true });
+            mkdirSync(join(repoRoot, 'packages', 'sub'), { recursive: true });
+
+            Object.defineProperty(process, 'cwd', {
+                value: () => repoRoot,
+                configurable: true,
+            });
+
+            process.env.CODING_AGENT_ROOT = 'packages/sub';
+
+            const { getDbPath } = await import('../src/store');
+            const result = getDbPath();
+            expect(result).toBe(join(repoRoot, '.git', 'task-memory.json'));
+        });
+
+        it('should throw NotGitError when CODING_AGENT_ROOT does not exist', async () => {
+            // 祖先に.gitがあるため、existsSyncガードが無ければ
+            // findGitPathの遡上で祖先.gitへ誤解決するfixture
+            const parentDir = join(homedir(), 'work', 'tm-agent-nonexist-' + Date.now());
+            mkdirSync(join(parentDir, '.git'), { recursive: true });
+            const agentRoot = join(parentDir, 'no-such-dir');
+
+            process.env.CODING_AGENT_ROOT = agentRoot;
+            useNonGitCwd();
+
+            const { getDbPath, NotGitError } = await import('../src/store');
+            expect(() => getDbPath()).toThrow(NotGitError);
+        });
+
+        it('should resolve symlinked CODING_AGENT_ROOT to its real path before ascending', async () => {
+            // agentRootがmonorepoサブディレクトリへのsymlinkの構成。
+            // resolve()は字句的正規化のみのため、realpathSyncでリンク先に解決してから
+            // 親を遡上しないとリンク元の親（sandbox home）側を探索してNotGitErrorになる
+            const repoRoot = join(homedir(), 'work', 'tm-agent-symlink-' + Date.now());
+            const agentRoot = join(repoRoot, 'packages', 'sub');
+            mkdirSync(join(repoRoot, '.git'), { recursive: true });
+            mkdirSync(agentRoot, { recursive: true });
+            // リンク元はsandbox home直下（非git）。リンク先のみがmonorepo配下
+            const linkPath = join(homedir(), 'tm-agent-symlink-link-' + Date.now());
+            symlinkSync(agentRoot, linkPath);
+
+            process.env.CODING_AGENT_ROOT = linkPath;
+            useNonGitCwd();
+
+            const { getDbPath } = await import('../src/store');
+            const result = getDbPath();
+            expect(result).toBe(join(repoRoot, '.git', 'task-memory.json'));
+
+            // reviewStoreも同一のresolveGitPathを経由するため同様にリンク先へ遡上する
+            const { getReviewDbPath } = await import('../src/reviewStore');
+            expect(getReviewDbPath()).toBe(join(repoRoot, '.git', 'review-memory.json'));
         });
     });
 });

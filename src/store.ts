@@ -1,6 +1,6 @@
-import { join, dirname } from 'path';
+import { join, dirname, resolve } from 'path';
 import { homedir } from 'os';
-import { existsSync, readFileSync, writeFileSync, statSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, statSync, realpathSync } from 'fs';
 import { spawnSync } from 'child_process';
 import type { Task, TaskStore, SyncConfig } from './types';
 import { normalizeOrders, resolveDuplicateOrders } from './utils/orderUtils';
@@ -44,11 +44,20 @@ export class NotGitError extends Error {
     }
 }
 
+// CODING_AGENT_ROOTの相対パスは絶対化し、実在しないパスはnull（祖先の別repoへの誤解決防止）
+// monorepoのサブディレクトリ指定にも対応するためfindGitPathで親方向へ遡って.gitを探索
+// symlink指定はrealpathSyncでリンク先に解決してから遡上する（resolve()は字句的正規化のみのため）
 export function resolveGitPath(): string | null {
     const agentRoot = process.env.CODING_AGENT_ROOT;
     if (agentRoot) {
-        const gitPath = join(agentRoot, '.git');
-        return existsSync(gitPath) ? gitPath : null;
+        const resolved = resolve(agentRoot);
+        if (!existsSync(resolved)) return null;
+        try {
+            return findGitPath(realpathSync(resolved));
+        } catch {
+            // existsSync済みでも解決中の削除・権限問題で失敗しうるため字句パスで再試行
+            return findGitPath(resolved);
+        }
     }
     return findGitPath(process.cwd());
 }

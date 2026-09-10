@@ -25,5 +25,5 @@ low
 
 ## 関連
 
-- タスク: TASK-40
+- タスク: TASK-9 (long)（旧DBのTASK-40から起票し直し。v0.6.0リリース時の棚卸しで保持を決定）
 - 関連ファイル: src/utils/orderUtils.ts, src/store.ts
