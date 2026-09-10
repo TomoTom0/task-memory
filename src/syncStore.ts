@@ -59,12 +59,6 @@ export function initSyncRepo(): boolean {
         writeFileSync(configFile, JSON.stringify(config, null, 2), 'utf-8');
     }
 
-    // .gitignore を作成（必要に応じて）
-    const gitignorePath = join(syncDir, '.gitignore');
-    if (!existsSync(gitignorePath)) {
-        writeFileSync(gitignorePath, '# Add patterns to ignore\n', 'utf-8');
-    }
-
     return true;
 }
 
@@ -231,6 +225,52 @@ export function getSyncRemoteUrl(): string | null {
 export function hasSyncCommits(): boolean {
     if (!isSyncInitialized()) return false;
     return runGitCommandCapture(['rev-parse', '--verify', 'HEAD']).status === 0;
+}
+
+// 同期対象（projects/ 配下）の外にある追跡済みパスを git ls-files で列挙する。
+// 旧版の git add . や tm git 経由の stage で projects/ 外が追跡済みのまま残っている
+// repo の検出に使う（同期対象の限定: projects/ のみ）。ls-files が失敗した場合は空配列。
+export function listTrackedPathsOutsideProjects(): string[] {
+    const result = runGitCommandCapture(['ls-files']);
+    if (result.status !== 0) {
+        return [];
+    }
+    return result.stdout.split('\n').filter(p => p !== '' && !p.startsWith('projects/'));
+}
+
+export interface LocalFileSyncSnapshot {
+    relativePath: string;
+    content: Buffer;
+}
+
+// remote 側の削除 commit（同期対象の限定: projects/ のみ）が projects/ 外の追跡済み
+// ローカルファイルを作業ツリーから消すのを防ぐため、pull 前に内容を保存する。
+// git rm --cached は commit を作る側のクライアントしか保護しないため、受信側の
+// 保護はこの snapshot と復元（restoreMissingFilesOutsideProjects）が担う。
+export function snapshotFilesOutsideProjects(): LocalFileSyncSnapshot[] {
+    const snapshot: LocalFileSyncSnapshot[] = [];
+    for (const relativePath of listTrackedPathsOutsideProjects()) {
+        const absolutePath = join(getSyncDir(), relativePath);
+        if (existsSync(absolutePath)) {
+            snapshot.push({ relativePath, content: readFileSync(absolutePath) });
+        }
+    }
+    return snapshot;
+}
+
+// snapshot のうち pull 後に作業ツリーから消えていたファイルを書き戻す。
+// 復元したファイルは untracked となり、同期対象（projects/ のみ）の外のため
+// 以後の push には含まれない。復元した相対パスを返す。
+export function restoreMissingFilesOutsideProjects(snapshot: LocalFileSyncSnapshot[]): string[] {
+    const restored: string[] = [];
+    for (const entry of snapshot) {
+        const absolutePath = join(getSyncDir(), entry.relativePath);
+        if (!existsSync(absolutePath)) {
+            writeFileSync(absolutePath, entry.content);
+            restored.push(entry.relativePath);
+        }
+    }
+    return restored;
 }
 
 export type AdoptResult =

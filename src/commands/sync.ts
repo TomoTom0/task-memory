@@ -18,6 +18,9 @@ import {
     cloneSyncRepo,
     ensureProjectsDir,
     adoptRemoteIntoEmptyRepo,
+    listTrackedPathsOutsideProjects,
+    snapshotFilesOutsideProjects,
+    restoreMissingFilesOutsideProjects,
 } from '../syncStore';
 import type { SyncConfig, Task } from '../types';
 
@@ -271,8 +274,22 @@ function handlePush(): void {
     }
     console.log(`Saved. (id: ${syncConfig.id})`);
 
+    // 同期対象は projects/ のみ。旧版の git add . や tm git 経由の stage で projects/ 外が
+    // 追跡済みに残っている場合、そのすべて（config.json / .gitignore に限らない）を
+    // index から外す。--cached のため作業ツリー上のファイルは削除されず、この解除を
+    // commit に含めることで旧版で初期化された repo も次回の push で remote から排除される。
+    const pathsOutsideProjects = listTrackedPathsOutsideProjects();
+    if (pathsOutsideProjects.length > 0) {
+        const untrackResult = runGitCommandCapture(['rm', '--cached', '--ignore-unmatch', '--', ...pathsOutsideProjects]);
+        if (untrackResult.status !== 0) {
+            console.error('Failed to stop tracking local sync files.');
+            console.error(untrackResult.stderr);
+            process.exit(1);
+        }
+    }
+
     // git add
-    const addStatus = runGitCommand(['add', '.']);
+    const addStatus = runGitCommand(['add', '--', 'projects']);
     if (addStatus !== 0) {
         console.error('Failed to stage changes.');
         process.exit(1);
@@ -326,9 +343,22 @@ function handlePull(options: Record<string, string | boolean>): void {
     }
 
     // リモートの変更を取得
-    const pullStatus = runGitCommand(['pull', '--rebase']);
+    // 旧バージョンで初期化された sync repo には現在ブランチの upstream が
+    // 設定されていない場合がある。origin の既定ブランチを明示すれば、その状態でも
+    // pull できる（通常の clone で設定された upstream がある場合にも同じく動作する）。
+    // 他PCの新版 push が生成する projects/ 外ファイルの削除 commit は、このPCの
+    // 追跡済みローカル設定ファイル（旧版の config.json / .gitignore 等）を作業ツリー
+    // から消してしまうため、pull 前に保存し pull 後に欠損分を復元する。
+    const localFileSnapshot = snapshotFilesOutsideProjects();
+
+    const pullStatus = runGitCommand(['pull', '--rebase', 'origin', 'HEAD']);
     if (pullStatus !== 0) {
         console.error('Warning: git pull failed. Using local data.');
+    }
+
+    const restoredPaths = restoreMissingFilesOutsideProjects(localFileSnapshot);
+    if (restoredPaths.length > 0) {
+        console.log(`Restored local files excluded from sync: ${restoredPaths.join(', ')}`);
     }
 
     const remoteStore = pullFromSync(syncConfig.id);

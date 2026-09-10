@@ -62,7 +62,7 @@ function getConfigFile(): string {
 影響する既存関数（いずれも関数内で `const syncDir = getSyncDir();` を取り直すのみ、シグネチャ不変）:
 
 - `isSyncInitialized()` … `existsSync(syncDir)` && `existsSync(join(syncDir, '.git'))`
-- `initSyncRepo()` … mkdir/git init/config.json/.gitignore の各パス
+- `initSyncRepo()` … mkdir/git init/config.json の各パス
 - `loadGlobalConfig()` / `saveGlobalConfig()` … CONFIG_FILE → `getConfigFile()`
 - `getProjectFilePath()` … `join(getProjectsDir(), ...)`
 - `pullFromSync()` / `listSyncedProjects()` … 同上
@@ -153,7 +153,7 @@ export function isValidSyncId(id: string): boolean;
 
 ### ブートストラップファイルの扱い（2回目レビュー指摘1対応）
 
-`initSyncRepo()` は `config.json` と `.gitignore` を無条件に生成する（[src/syncStore.ts:46-55](/home/tomo/work/app/cli/task-memory/src/syncStore.ts:46)）。PC-A側は `push` 時に `git add .` でこれらもcommit・remoteへpush済みのため、PC-Bが `add` 直後に同名の未追跡ファイルを持つ状態で `checkout -B` すると、git は「未追跡ファイルが上書きされる」として必ず失敗する。これは「`add`→`set --remote`で復旧完結」という本設計の主目的と両立しない致命的な欠陥だった。
+設計当時の `initSyncRepo()` は `config.json` と `.gitignore` を無条件に生成し、PC-A側も `push` 時に `git add .` でこれらをcommit・remoteへpushしていた。そのためPC-Bが `add` 直後に同名の未追跡ファイルを持つ状態で `checkout -B` すると、git は「未追跡ファイルが上書きされる」として必ず失敗する。これは「`add`→`set --remote`で復旧完結」という本設計の主目的と両立しない致命的な欠陥だった。（`.gitignore` の生成とpushへのcommitは「同期対象の限定: projects/ のみ」変更で廃止されたが、旧remoteはこれらを追跡済みのまま残るため、以下の退避ロジックは現行でも必要）
 
 3回目レビュー指摘（高）対応: 当初案は「内容を問わず削除」だったが、`.gitignore` は利用者が追記し得る・`config.json` も公開APIの `saveGlobalConfig()` 経由で書き換わり得るため、「削除して問題ない」という前提は成立しない。**削除ではなく、常にリネームで退避**する（内容の完全一致確認は将来のconfig.json形状変更に弱く不採用。退避なら内容を問わず無条件に非破壊）。
 
@@ -759,10 +759,10 @@ afterEach(() => {
 
 ### 自動adopt（applyAutoAdopt）のテスト観点
 
-16e. PC-B復旧E2E（指摘1の主眼・2回目レビューで再修正）: bare remoteでwork cloneを作り、`config.json` を含む形で `git add . && git commit && push`（PC-Aの`push`が実際に生成する内容を再現）。ローカルでは `syncCommand(['add', '--id', 'shared'])`（remote無し・`initSyncRepo()`由来の未追跡`config.json`/`.gitignore`が存在し、commitも無い状態）→ 続けて `syncCommand(['set', '--remote', remotePath])` → ログに `Adopted existing data from remote.` を含み、`hasSyncProject('shared') === true`。以後 `syncCommand(['pull'])` がexitせず成功する。**本ケースはブートストラップファイル除去（`config.json`/`.gitignore`の未追跡時削除）が無いと`checkout -B`が失敗して再現しないため、その除去ロジックの直接的な回帰確認を兼ねる**
+16e. PC-B復旧E2E（指摘1の主眼・2回目レビューで再修正）: bare remoteでwork cloneを作り、`config.json` を含む形で `git add . && git commit && push`（旧版PC-Aの`push`が生成していた内容の再現。現行のpushは`projects/`配下のみをcommitする）。ローカルでは `syncCommand(['add', '--id', 'shared'])`（remote無し・`initSyncRepo()`由来の未追跡`config.json`が存在し、commitも無い状態）→ 続けて `syncCommand(['set', '--remote', remotePath])` → ログに `Adopted existing data from remote.` を含み、`hasSyncProject('shared') === true`。以後 `syncCommand(['pull'])` がexitせず成功する。**本ケースはブートストラップファイル退避（`config.json`/`.gitignore`の未追跡時リネーム退避）が無いと`checkout -B`が失敗して再現しないため、その退避ロジックの直接的な回帰確認を兼ねる**
 16e2. 非main/masterブランチの解決（指摘2・2回目）: bare remoteのデフォルトブランチを `trunk` 等main/master以外の名前で作成し、他に古い保守用ブランチ（例: `legacy`）も存在する状態で16eと同じ手順を実行 → `origin/legacy` ではなく `origin/trunk`（remoteのHEAD symrefが指す方）がadoptされること（`git -C <SYNC_DIR> branch --show-current === 'trunk'`）を確認。`git branch -r` の表示順に依存する誤adoptが再発しないことの回帰確認
 16f. remoteが空: bare remoteをcommit無しで作成 → `add --remote <bare>` → ログに `Remote repository has no commits yet.`、exitしない
-16g. 衝突で失敗（真のローカルデータとの衝突）: `projects/shared.json`（未commit・remoteと同名で内容異なる。ブートストラップファイルではなく実データ）を用意した状態でremote接続 → `checkout -B` が失敗する状況を再現し、exit 1・`could not be adopted automatically` を含む。ローカルファイルが変更されず残っていることを確認（非破壊の確認）。`config.json`/`.gitignore`は削除対象だがこのファイルは対象外であることの区別を確認
+16g. 衝突で失敗（真のローカルデータとの衝突）: `projects/shared.json`（未commit・remoteと同名で内容異なる。ブートストラップファイルではなく実データ）を用意した状態でremote接続 → `checkout -B` が失敗する状況を再現し、exit 1・`could not be adopted automatically` を含む。ローカルファイルが変更されず残っていることを確認（非破壊の確認）。`config.json`/`.gitignore`は退避対象だがこのファイルは対象外であることの区別を確認
 16h. 既にcommitあり（復旧対象外）: `add --remote` → `push` で1コミット作成済みの状態から `set --remote <別url>` → adoptは走らない（`hasSyncCommits() === true` のため）。従来の `Remote origin changed:` メッセージのみ
 16l. store層のid防御（指摘4・2回目）: `syncCommand(['add', '--id', 'x', '--save'])` で同期を有効化した後、`loadSyncConfig()`/`saveSyncConfig()`を直接使わずconfig.json相当のファイルを手編集する体で `syncConfig.id = '../evil'` を注入した状態を作り、`saveToSync('../evil', store)` / `pullFromSync('../evil')` / `hasSyncProject('../evil')` を直接呼ぶ → CLI層を経由せずとも `false` / `null` / `false` を返し、`projects/`外へのファイル操作が起きないことを確認（CLI検証をバイパスする経路の防御確認）
 
@@ -813,6 +813,23 @@ HOME差し替えをファイル全体のbeforeEach/afterEachに変更したこ�
 - `SyncDirState` はunion型リテラルで定義
 - `spawnSync` の戻り値は既存どおり `result.status ?? 1` でnumber化（null伝播しない）
 - テストコードのprocess.exitスタブは既存 `test/sync.test.ts` の記述を踏襲する
+
+## 同期対象の限定: projects/ のみ（初期実装後の変更）
+
+初期実装のmerge後、同期対象を `projects/` 配下のタスクデータのみに限定した。`config.json`（`defaultAuto` 等の同期クライアント設定）と `.gitignore` はPC単位のローカル設定であり、remoteへ同期すべきでない。
+
+### 変更内容
+
+- `handlePush()`: stage範囲を `git add .` から `git add -- projects` に限定。加えて旧版がremoteへcommit済みのローカル設定ファイルをindexから外すため、push前に `git ls-files` で列挙した追跡済みパスのうち `projects/` 配下以外をすべて `git rm --cached --ignore-unmatch -- <paths>` でindexから外す（PR#44レビュー指摘対応: 旧版の `git add .` が `config.json`/`.gitignore` 以外のトップレベルファイルを追跡していた場合や `tm git` 経由でstageされたファイルも、2ファイルの特別扱いではindexに残りcommitされ続けるため、ファイル名の列挙ではなくls-files由来の一括除外とする）。`--cached` のため作業ツリー上のファイルは削除されず、この解除をcommitに含めるため、旧版で初期化されたrepoも次回のpushでremoteから排除される
+- `initSyncRepo()`: `.gitignore` の生成を廃止（「ブートストラップファイルの扱い」記載のうち `.gitignore` 生成は本変更で削除。`config.json` はローカル設定として引き続き生成する）
+- `handlePull()`: `git pull --rebase` を `git pull --rebase origin HEAD` に変更。旧バージョンで `git init` 由来の初期化をしたsync repoは現在ブランチにupstreamが設定されておらず、upstream暗黙解決のpullが失敗する。originの既定ブランチを明示すれば両状態（upstreamあり/なし）で動作する
+- `handlePull()`: projects/外ファイルの受信側保護（PR#44レビュー指摘対応）。`git rm --cached` はcommitを作る側のクライアントしか保護せず、他PCの新版pushが生成したprojects/外ファイルの削除commitは、それをpullする既存cloneでは通常の削除として作業ツリーへ適用される。このためpull前に `snapshotFilesOutsideProjects()`（syncStore新関数）でprojects/外の追跡済みファイルの作業ツリー内容を保存し、pull後に `restoreMissingFilesOutsideProjects()`（同）で欠損分を書き戻す。復元されたファイルはuntrackedとなり、同期対象（projects/のみ）の外のため以後のpushには含まれない。保護対象はpullの直前時点で追跡済みのパスに限る（未追跡ファイルはrebaseで削除されないため保護不要）
+
+`snapshotFilesOutsideProjects` / `restoreMissingFilesOutsideProjects` / 列挙の共通処理となる `listTrackedPathsOutsideProjects` は `syncStore.ts` の公開関数として追加し、handlePush・handlePullの両方から使う。
+
+### ブートストラップ退避ロジックとの関係
+
+旧remote（`config.json` を追跡済み）からclone・adoptするPC-Bでは、remote側の追跡ファイルとローカルの未追跡 `config.json` の衝突が引き続き発生するため、`adoptRemoteIntoEmptyRepo()` の退避ロジックは残置する。新規に初期化されたPC-Aのpushは本変更により `config.json` を含まなくなるため、新規remoteではこの衝突自体が起きない。
 
 ## 実装順序
 

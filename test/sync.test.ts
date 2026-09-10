@@ -93,6 +93,21 @@ function seedRemote(remotePath: string, branch: string, files: Record<string, st
     rmSync(workDir, { recursive: true, force: true });
 }
 
+// 他PCの新版 tm sync push が remote に作る「projects/ 外ファイルの削除 commit」を模擬する
+// （work clone で projects/ 外を git rm --cached して commit・push）
+function untrackOutsideProjectsInRemote(remotePath: string, branch: string): void {
+    const workDir = mkdtempSync(join(TMP_ROOT, 'work-clone-'));
+    spawnSync('git', ['clone', remotePath, workDir], { stdio: 'pipe' });
+    const ls = spawnSync('git', ['-C', workDir, 'ls-files'], { encoding: 'utf-8', stdio: 'pipe' });
+    const outside = ls.stdout.split('\n').filter(p => p !== '' && !p.startsWith('projects/'));
+    if (outside.length > 0) {
+        spawnSync('git', ['-C', workDir, 'rm', '--cached', '--ignore-unmatch', '--', ...outside], { stdio: 'pipe' });
+        spawnSync('git', ['-C', workDir, '-c', 'user.email=test@example.com', '-c', 'user.name=test', 'commit', '-m', 'untrack local files'], { stdio: 'pipe' });
+        spawnSync('git', ['-C', workDir, 'push', 'origin', branch], { stdio: 'pipe' });
+    }
+    rmSync(workDir, { recursive: true, force: true });
+}
+
 function pushBranchFrom(remotePath: string, newBranch: string): void {
     const workDir = mkdtempSync(join(TMP_ROOT, 'work-clone-'));
     spawnSync('git', ['clone', remotePath, workDir], { stdio: 'pipe' });
@@ -744,9 +759,33 @@ describe('sync clone/add/set/push/pull (TASK-12 test-first)', () => {
             expect(rev.status).toBe(0);
             const ls = spawnSync('git', ['--git-dir', remote, 'ls-tree', '-r', '--name-only', 'HEAD'], { encoding: 'utf-8' });
             expect(ls.stdout).toContain('projects/test-project.json');
+            expect(ls.stdout).not.toContain('config.json');
+            expect(ls.stdout).not.toContain('.gitignore');
         });
 
-        it('[covers:sync-push.git-add-fails] git add .の失敗を検知しcommit/pushへ進まずexit 1する', () => {
+        it('[covers:sync-push.config-local-only] 旧版で追跡済みのprojects/外ファイルはpush時にリモートから除外される', () => {
+            const remote = createBareRemote();
+            seedRemote(remote, 'main', {
+                'config.json': JSON.stringify({ defaultAuto: true }, null, 2),
+                '.gitignore': '# Add patterns to ignore\n',
+                'notes.md': '# local memo\n',
+                'projects/test-project.json': JSON.stringify({ tasks: [] }, null, 2),
+            });
+            runExpectingExit(() => syncCommand(['clone', remote]));
+            runExpectingExit(() => syncCommand(['add', '--id', 'test-project']));
+
+            const result = runExpectingExit(() => syncCommand(['push']));
+            expect(result.code).toBeUndefined();
+            const ls = spawnSync('git', ['--git-dir', remote, 'ls-tree', '-r', '--name-only', 'HEAD'], { encoding: 'utf-8' });
+            expect(ls.stdout).not.toContain('config.json');
+            expect(ls.stdout).not.toContain('.gitignore');
+            expect(ls.stdout).not.toContain('notes.md');
+            expect(ls.stdout).toContain('projects/test-project.json');
+            // --cached のため作業ツリー上のファイルは削除されない
+            expect(existsSync(join(getSyncDir(), 'notes.md'))).toBe(true);
+        });
+
+        it('[covers:sync-push.git-add-fails] git add -- projectsの失敗を検知しcommit/pushへ進まずexit 1する', () => {
             const remote = createBareRemote();
             runExpectingExit(() => syncCommand(['add', '--id', 'test-project', '--remote', remote]));
             const objectsDir = join(getSyncDir(), '.git', 'objects');
@@ -804,6 +843,59 @@ describe('sync clone/add/set/push/pull (TASK-12 test-first)', () => {
             expect(result.code).toBeUndefined();
             const store = loadStore();
             expect(store.tasks.some(t => t.summary === 'from remote')).toBe(true);
+        });
+
+        it('[covers:sync-pull.no-upstream] 現在ブランチにupstreamがなくてもoriginの既定ブランチからpullできる', () => {
+            const remote = createBareRemote();
+            seedRemote(remote, 'main', {
+                'projects/test-project.json': JSON.stringify({ tasks: [] }, null, 2),
+            });
+            runExpectingExit(() => syncCommand(['clone', remote]));
+            runExpectingExit(() => syncCommand(['add', '--id', 'test-project']));
+
+            const branch = runGitCommandCapture(['branch', '--show-current']).stdout.trim();
+            expect(runGitCommandCapture(['config', '--unset', `branch.${branch}.remote`]).status).toBe(0);
+            expect(runGitCommandCapture(['config', '--unset', `branch.${branch}.merge`]).status).toBe(0);
+
+            const result = runExpectingExit(() => syncCommand(['pull']));
+            expect(result.code).toBeUndefined();
+            expect(result.errors.some(e => e.includes('Warning: git pull failed.'))).toBe(false);
+        });
+
+        it('[covers:sync-pull.preserve-local-files] remoteのprojects/外削除commitをpullしてもローカルの追跡済みファイルは保持される', () => {
+            const remote = createBareRemote();
+            const configContent = JSON.stringify({ defaultAuto: true }, null, 2);
+            const gitignoreContent = '# Add patterns to ignore\n';
+            seedRemote(remote, 'main', {
+                'config.json': configContent,
+                '.gitignore': gitignoreContent,
+                'projects/test-project.json': JSON.stringify({
+                    tasks: [{
+                        id: 'TASK-1', status: 'todo', summary: 'from remote', bodies: [], files: { read: [], edit: [] },
+                        created_at: '2026-01-01T00:00:00.000Z', updated_at: '2026-01-01T00:00:00.000Z', order: '1',
+                    }],
+                }, null, 2),
+            });
+            // 旧remoteをcloneしたPC-B（config.json / .gitignore が追跡済み）
+            runExpectingExit(() => syncCommand(['clone', remote]));
+            runExpectingExit(() => syncCommand(['add', '--id', 'test-project']));
+
+            // 他PCの新版pushがremoteに入れた projects/ 外ファイルの削除commit
+            untrackOutsideProjectsInRemote(remote, 'main');
+
+            const result = runExpectingExit(() => syncCommand(['pull']));
+            expect(result.code).toBeUndefined();
+            // git rm --cached の削除commitは受信側では通常の削除として適用されるため、
+            // 復元処理が無ければこの2ファイルは消える
+            expect(existsSync(join(getSyncDir(), 'config.json'))).toBe(true);
+            expect(existsSync(join(getSyncDir(), '.gitignore'))).toBe(true);
+            expect(readFileSync(join(getSyncDir(), 'config.json'), 'utf-8')).toBe(configContent);
+            expect(readFileSync(join(getSyncDir(), '.gitignore'), 'utf-8')).toBe(gitignoreContent);
+            const restoreLog = result.logs.find(l => l.startsWith('Restored local files excluded from sync:'));
+            expect(restoreLog).toContain('config.json');
+            expect(restoreLog).toContain('.gitignore');
+            // タスク反映は通常どおり行われる
+            expect(loadStore().tasks.some(t => t.summary === 'from remote')).toBe(true);
         });
 
         it('[covers:sync-pull.project-not-found-guidance] 存在しないプロジェクトIDのpullFromSyncは案内2行を追加で表示する', () => {

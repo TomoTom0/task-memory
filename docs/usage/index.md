@@ -372,6 +372,8 @@ tm sync set --id new-name auto
 
 ### データの保存とpush
 
+同期対象は `projects/` 配下のタスクデータのみです。`config.json` などの同期クライアント設定は同期されません。旧バージョンがremoteへcommit済みの `projects/` 外ファイル（`config.json`・`.gitignore` 等）は、次回の `tm sync push` でremoteから除外されます（ローカルのファイルは削除されません）。
+
 ```bash
 # ローカルに保存
 tm sync save
@@ -389,6 +391,8 @@ tm sync pull
 # マージモードで取得
 tm sync pull --merge
 ```
+
+他PCのpushによってremoteから `projects/` 外ファイル（`config.json`・`.gitignore` 等）が削除されても、pullを実行したPCのローカルファイルは削除されず保持されます（`Restored local files excluded from sync:` が表示されます）。
 
 ### 状態確認
 
