@@ -16,7 +16,7 @@ vitestで実行する（`pnpm test`）。ファイルは `test/*.test.ts` にフ
 | `get.test.ts` | `tm get` |
 | `git_search.test.ts` | `findGitPath` |
 | `guard_snapshot.test.ts` | 実データ不変guardのsnapshot分岐（symlink参照実体・loop・absent遷移） |
-| `global_mode.test.ts` | globalモード |
+| `global_mode.test.ts` | globalモード、`CODING_AGENT_ROOT`指定時のgitルート解決（monorepo遡上・相対パス・不在ガード） |
 | `index.test.ts` | `isMainEntry`（symlink-aware direct invocation check）、`getHelpText` |
 | `list.test.ts` | `tm list` |
 | `new.test.ts` | `tm new` の引数パース |
