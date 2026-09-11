@@ -831,6 +831,47 @@ HOME差し替えをファイル全体のbeforeEach/afterEachに変更したこ�
 
 旧remote（`config.json` を追跡済み）からclone・adoptするPC-Bでは、remote側の追跡ファイルとローカルの未追跡 `config.json` の衝突が引き続き発生するため、`adoptRemoteIntoEmptyRepo()` の退避ロジックは残置する。新規に初期化されたPC-Aのpushは本変更により `config.json` を含まなくなるため、新規remoteではこの衝突自体が起きない。
 
+## 既定branch名不一致の復旧とnested path復元（PR#46レビュー指摘対応）
+
+v0.6.0リリースPRのレビューで指摘された2件（P1）への対応。
+
+### 背景1: ローカルとremoteのgit既定branch名の不一致
+
+`initSyncRepo()` は `git init` に `--initial-branch` を渡さず、ローカルのgit既定branch（環境により `master`）で初期化される。一方、空のforge repo（GitHub等）のHEADは `main` 等を指す。この状態で `add --remote` → `push` すると、pushは `HEAD` と同名のbranch（`master`）を作るだけでremote HEADの指す先（`main`）は埋まらず、remote HEADがdangling（実在しないbranchを指す）状態になる。このremoteに対して2台目は:
+
+- `clone` はwarning付きで成功するが何もcheckoutしない（remote-tracking refは作られる）
+- `add` / `set --remote` の自動adoptはbranchを決定できず拒否する
+- `pull` は `git pull --rebase origin HEAD` が `couldn't find remote ref HEAD` で失敗する
+
+### 実装1: branch解決の一元化と4経路の復旧
+
+ローカルのfile/path transportではdangling HEADやunborn HEADのsymrefは `ls-remote` に広告されないため、判定は「HEAD symrefの広告（`getRemoteDefaultBranch()`）× 実在head branch集合（`getRemoteHeadBranches()`）」の組合せで行う。この組合せから採用branchを決める純粋関数 `resolveRemoteSyncBranch(symrefBranch, headBranches)`（syncStore.ts）を新設し、次の4経路で使う:
+
+- **push（予防）**: `shouldRenameLocalBranchToRemoteDefault()`（同）が、remote既定branch名が広告されており・remoteにまだ実在せず・ローカルの現在branch名と異なる場合にrename先を返す。handlePushは該当時のみ `git branch -m` でローカルbranchをremote既定名へrenameしてからpushし、remote HEADの指す先を埋める。forgeのunborn HEAD広告（GitHubの空repo等）で効く経路で、ローカルのbare remoteでは広告が無いため何もしない（後述の受信側復旧で吸収する）
+- **adopt（復旧）**: `adoptRemoteIntoEmptyRepo()` はresolverの結果に従う。HEAD symrefが無い・指す先が未実在でも、head branchが1本だけならそのbranchを採用する。headが複数ある場合は従来どおり修復を促して停止（`sync-adopt.missing-head-with-branches`）
+- **clone（復旧）**: clone成功後にcheckoutされていない（`hasSyncCommits()` がfalse）場合、remote-tracking branchが1本だけなら `git checkout -B <branch> origin/<branch>` で復旧する
+- **pull（復旧）**: resolverがbranchを決定できた場合（HEAD解決不能かつsole branchを含む）はそのbranchからpullし、`origin HEAD` の解決失敗で警告に出力が止まることを防ぐ
+
+symrefが未実在branchを指す×head 0本（forgeのunborn広告）はremote-empty扱いとし、commitが1つも無いremoteでの誤adoptを防ぐ。branch名はremote由来の値をgit引数へ渡すため、従来どおり `isSafeGitUrl()` と同じ境界で検証する。
+
+### 背景2: nested path復元時の親ディレクトリ消失
+
+projects/外の追跡済みパスがnested path（例: `local/settings.json`）の場合、remoteの削除commitの適用は空になった親ディレクトリ（`local/`）ごと作業ツリーから消す。`restoreMissingFilesOutsideProjects()` の `writeFileSync` は親ディレクトリ不存在のENOENTで失敗し、pull済みのローカルファイルを復元できないままcommandが中断していた。
+
+### 実装2: 書き戻し前の親ディレクトリ再生成
+
+`restoreMissingFilesOutsideProjects()` は書き戻し前に `mkdirSync(dirname(path), { recursive: true })` で親ディレクトリを再生成する。
+
+### テスト
+
+`test/design/sync-setup.toml` に条件6件を追加し、1件（`sync-adopt.missing-head-with-branches`）をbranch複数の場合の拒否に限定して更新した:
+
+- `sync-clone.dangling-head-sole-branch` / `sync-adopt.sole-branch-adopt` / `sync-pull.sole-branch-fallback`: dangling HEADのbare remoteへmasterだけをpush済みの状態（`pushSoleBranchLeavingHeadDangling` helperで構築）でのe2e復旧
+- `sync-adopt.branch-resolution-logic` / `sync-push.rename-to-remote-default-logic`: resolver・rename判定の純粋関数の全分岐（ローカルe2eで再現できないforgeのunborn HEAD広告等を含む）
+- `sync-pull.preserve-nested-local-files`: 親ディレクトリごと消えたnested pathの復元
+
+各e2eテストは修正前の実装では失敗すること（ENOENT・adopt拒否・pull警告）を確認済み。
+
 ## 実装順序
 
 1. syncStore.ts: パス遅延計算化（既存テストが全greenであることを確認）

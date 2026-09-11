@@ -21,6 +21,10 @@ import {
     listTrackedPathsOutsideProjects,
     snapshotFilesOutsideProjects,
     restoreMissingFilesOutsideProjects,
+    getRemoteDefaultBranch,
+    getRemoteHeadBranches,
+    resolveRemoteSyncBranch,
+    shouldRenameLocalBranchToRemoteDefault,
 } from '../syncStore';
 import type { SyncConfig, Task } from '../types';
 
@@ -114,6 +118,33 @@ function handleClone(positional: string[]): void {
         process.exit(1);
     }
     ensureProjectsDir();
+
+    // remote HEAD が実在しない branch を指す場合（ローカルと remote の git 既定 branch 名の
+    // 不一致で最初の push が行われた状態）、git clone は warning を出して何も checkout
+    // しない。remote 側 branch が1本だけならそれを checkout して復旧する
+    // （PR#46レビュー指摘対応）
+    if (!hasSyncCommits()) {
+        const refsResult = runGitCommandCapture(['for-each-ref', '--format=%(refname:short)', 'refs/remotes/origin']);
+        const remoteBranches = refsResult.status === 0
+            ? refsResult.stdout
+                .split('\n')
+                .map(r => r.trim())
+                .filter(r => r !== '' && r !== 'origin/HEAD')
+                .map(r => r.replace(/^origin\//, ''))
+            : [];
+        if (remoteBranches.length === 1) {
+            const branch = remoteBranches[0];
+            if (branch !== undefined && isSafeGitUrl(branch)) {
+                const checkoutResult = runGitCommandCapture(['checkout', '-B', branch, `origin/${branch}`]);
+                if (checkoutResult.status === 0) {
+                    console.log(`Checked out the remote branch "${branch}" (the remote HEAD points to a nonexistent branch).`);
+                } else {
+                    console.error('Warning: failed to check out the remote branch after clone.');
+                    console.error(checkoutResult.stderr);
+                }
+            }
+        }
+    }
 
     console.log(`Cloned sync repository to: ${getSyncDir()}`);
     console.log('');
@@ -314,6 +345,25 @@ function handlePush(): void {
     }
 
     // git push
+    // ローカルの git 既定 branch（例: master）と remote の既定 branch（例: main）が異なる
+    // 場合、そのまま push すると remote HEAD が実在しない branch を指したままとなり、
+    // 他PCの clone / adopt / pull が破綻する。remote 既定 branch 名が広告されており
+    // remote にまだ実在しない場合は、先にローカル branch をその名前へ rename してから push する
+    // （PR#46レビュー指摘対応）
+    const branchResult = runGitCommandCapture(['rev-parse', '--abbrev-ref', 'HEAD']);
+    const localBranch = branchResult.status === 0 ? branchResult.stdout.trim() : '';
+    if (localBranch !== '' && localBranch !== 'HEAD' && isSafeGitUrl(localBranch)) {
+        const renameTo = shouldRenameLocalBranchToRemoteDefault(localBranch, getRemoteDefaultBranch(), getRemoteHeadBranches());
+        if (renameTo !== null) {
+            const renameResult = runGitCommandCapture(['branch', '-m', localBranch, renameTo]);
+            if (renameResult.status === 0) {
+                console.log(`Renamed local branch "${localBranch}" to "${renameTo}" to match the remote default branch.`);
+            } else {
+                console.error(`Warning: failed to rename branch "${localBranch}" to "${renameTo}".`);
+                console.error(renameResult.stderr);
+            }
+        }
+    }
     const pushStatus = runGitCommand(['push', '--set-upstream', 'origin', 'HEAD']);
     if (pushStatus !== 0) {
         console.error('Failed to push.');
@@ -346,12 +396,21 @@ function handlePull(options: Record<string, string | boolean>): void {
     // 旧バージョンで初期化された sync repo には現在ブランチの upstream が
     // 設定されていない場合がある。origin の既定ブランチを明示すれば、その状態でも
     // pull できる（通常の clone で設定された upstream がある場合にも同じく動作する）。
+    // remote HEAD が実在しない branch を指す場合（ローカルと remote の git 既定 branch
+    // 名の不一致で最初の push が行われた状態）は origin HEAD が解決できず pull が失敗
+    // するため、remote 側 branch が1本だけならその branch から pull する
+    // （clone / adopt の同一条件による復旧と対。PR#46レビュー指摘対応）。
     // 他PCの新版 push が生成する projects/ 外ファイルの削除 commit は、このPCの
     // 追跡済みローカル設定ファイル（旧版の config.json / .gitignore 等）を作業ツリー
     // から消してしまうため、pull 前に保存し pull 後に欠損分を復元する。
     const localFileSnapshot = snapshotFilesOutsideProjects();
 
-    const pullStatus = runGitCommand(['pull', '--rebase', 'origin', 'HEAD']);
+    const pullBranchDecision = resolveRemoteSyncBranch(getRemoteDefaultBranch(), getRemoteHeadBranches() ?? new Set());
+    const pullBranch = 'branch' in pullBranchDecision && isSafeGitUrl(pullBranchDecision.branch)
+        ? pullBranchDecision.branch
+        : 'HEAD';
+
+    const pullStatus = runGitCommand(['pull', '--rebase', 'origin', pullBranch]);
     if (pullStatus !== 0) {
         console.error('Warning: git pull failed. Using local data.');
     }

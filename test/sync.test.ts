@@ -13,6 +13,8 @@ import {
     hasSyncProject,
     hasSyncCommits,
     runGitCommandCapture,
+    resolveRemoteSyncBranch,
+    shouldRenameLocalBranchToRemoteDefault,
 } from '../src/syncStore';
 import { loadStore, saveStore } from '../src/store';
 import type { TaskStore, Task } from '../src/types';
@@ -116,6 +118,42 @@ function pushBranchFrom(remotePath: string, newBranch: string): void {
     rmSync(workDir, { recursive: true, force: true });
 }
 
+// HEADがmainを指すbare remoteへmasterだけをpushする。ローカルとremoteのgit既定branch名が
+// 異なる状態で最初のpushが行われた情形を模擬し、remote HEADがdangling（実在しないbranch
+// を指す）になる（PR#46レビュー指摘対応）。空cloneのworkはremote HEAD由来のunborn branch
+// （main）に居るため、明示的にmasterへ切り替えてからcommitする
+function pushSoleBranchLeavingHeadDangling(remotePath: string, files: Record<string, string>): void {
+    const workDir = mkdtempSync(join(TMP_ROOT, 'work-clone-'));
+    spawnSync('git', ['clone', remotePath, workDir], { stdio: 'pipe' });
+    spawnSync('git', ['-C', workDir, 'checkout', '-b', 'master'], { stdio: 'pipe' });
+    for (const [name, content] of Object.entries(files)) {
+        const filePath = join(workDir, name);
+        mkdirSync(dirname(filePath), { recursive: true });
+        writeFileSync(filePath, content, 'utf-8');
+    }
+    spawnSync('git', ['-C', workDir, 'add', '.'], { stdio: 'pipe' });
+    spawnSync('git', ['-C', workDir, '-c', 'user.email=test@example.com', '-c', 'user.name=test', 'commit', '-m', 'seed'], { stdio: 'pipe' });
+    spawnSync('git', ['-C', workDir, 'push', 'origin', 'master'], { stdio: 'pipe' });
+    rmSync(workDir, { recursive: true, force: true });
+}
+
+// dangling HEADのremoteのsole branch（master）に対し、work clone経由で新規commitをpushして
+// remoteを進める
+function advanceSoleBranch(remotePath: string, branch: string, files: Record<string, string>): void {
+    const workDir = mkdtempSync(join(TMP_ROOT, 'work-clone-'));
+    spawnSync('git', ['clone', remotePath, workDir], { stdio: 'pipe' });
+    spawnSync('git', ['-C', workDir, 'checkout', '-B', branch, `origin/${branch}`], { stdio: 'pipe' });
+    for (const [name, content] of Object.entries(files)) {
+        const filePath = join(workDir, name);
+        mkdirSync(dirname(filePath), { recursive: true });
+        writeFileSync(filePath, content, 'utf-8');
+    }
+    spawnSync('git', ['-C', workDir, 'add', '.'], { stdio: 'pipe' });
+    spawnSync('git', ['-C', workDir, '-c', 'user.email=test@example.com', '-c', 'user.name=test', 'commit', '-m', 'advance'], { stdio: 'pipe' });
+    spawnSync('git', ['-C', workDir, 'push', 'origin', branch], { stdio: 'pipe' });
+    rmSync(workDir, { recursive: true, force: true });
+}
+
 describe('syncStore', () => {
     afterEach(() => {
         for (const id of ['test-project']) {
@@ -164,6 +202,52 @@ describe('syncStore', () => {
         it('should generate a non-empty sync id', () => {
             const id = generateSyncId();
             expect(id.length).toBeGreaterThan(0);
+        });
+    });
+
+    describe('resolveRemoteSyncBranch', () => {
+        it('[covers:sync-adopt.branch-resolution-logic] symrefとhead集合の組合せで採用branch/remote-empty/ambiguousを正しく判別する', () => {
+            // symrefが実在するbranchを指す: そのbranch（補足なし）
+            expect(resolveRemoteSyncBranch('main', new Set(['main']))).toEqual({ kind: 'branch', branch: 'main', note: null });
+            // symref無し × head 0本: 空
+            expect(resolveRemoteSyncBranch(null, new Set())).toEqual({ kind: 'remote-empty' });
+            // symrefが未実在のbranchを指す × head 0本: 空（forgeのunborn HEAD広告に相当）
+            expect(resolveRemoteSyncBranch('main', new Set())).toEqual({ kind: 'remote-empty' });
+            // symref無し × head 1本: sole branchを採用（ローカルのdangling HEADは広告されない）
+            expect(resolveRemoteSyncBranch(null, new Set(['master']))).toEqual({
+                kind: 'branch', branch: 'master', note: expect.stringContaining('sole branch "master"'),
+            });
+            // symrefが未実在のbranchを指す × head 1本: sole branchを採用
+            expect(resolveRemoteSyncBranch('main', new Set(['master']))).toEqual({
+                kind: 'branch', branch: 'master', note: expect.stringContaining('sole branch "master"'),
+            });
+            // symref無し × head複数: どれを採用すべきか判断できないため修復を促す
+            expect(resolveRemoteSyncBranch(null, new Set(['master', 'legacy']))).toEqual({
+                kind: 'ambiguous',
+                stderr: 'Remote has branches but its default HEAD does not point to one. Set the remote HEAD, then retry.',
+            });
+            // symrefが未実在のbranchを指す × head複数: 同じく修復を促す（指す先の文言違い）
+            expect(resolveRemoteSyncBranch('missing', new Set(['master', 'legacy']))).toEqual({
+                kind: 'ambiguous',
+                stderr: 'Remote HEAD points to "missing" which has no commits, and multiple branches exist. Set the remote HEAD, then retry.',
+            });
+        });
+    });
+
+    describe('shouldRenameLocalBranchToRemoteDefault', () => {
+        it('[covers:sync-push.rename-to-remote-default-logic] 広告済み・未実在・ローカルbranchと異なる場合のみrename先を返す', () => {
+            // remote既定branchが広告され・未実在で・ローカルと異なる: rename先を返す
+            expect(shouldRenameLocalBranchToRemoteDefault('master', 'main', new Set())).toBe('main');
+            // 既にremoteへ実在する場合はそのまま（HEADは解決済み）
+            expect(shouldRenameLocalBranchToRemoteDefault('master', 'main', new Set(['main']))).toBeNull();
+            // ローカルbranchと同名
+            expect(shouldRenameLocalBranchToRemoteDefault('main', 'main', new Set())).toBeNull();
+            // 広告なし（dangling HEADは広告されない・ls-remote失敗）
+            expect(shouldRenameLocalBranchToRemoteDefault('master', null, new Set())).toBeNull();
+            // branch名として安全でない値はgit引数へ渡さない
+            expect(shouldRenameLocalBranchToRemoteDefault('master', '-x', new Set())).toBeNull();
+            // ls-remote --headsの失敗
+            expect(shouldRenameLocalBranchToRemoteDefault('master', 'main', null)).toBeNull();
         });
     });
 });
@@ -408,6 +492,22 @@ describe('sync clone/add/set/push/pull (TASK-12 test-first)', () => {
             const result = runExpectingExit(() => syncCommand(['clone', join(process.cwd(), 'does-not-exist-remote')]));
             expect(result.code).toBe(1);
             expect(result.errors.some(e => e.includes('Failed to clone sync repository.'))).toBe(true);
+        });
+
+        it('[covers:sync-clone.dangling-head-sole-branch] remote HEADが実在しないbranchを指す場合もclone後にsole branchをcheckoutして復旧する', () => {
+            const remote = createBareRemote('main');
+            pushSoleBranchLeavingHeadDangling(remote, {
+                'projects/shared.json': JSON.stringify({ tasks: [] }, null, 2),
+            });
+            const result = runExpectingExit(() => syncCommand(['clone', remote]));
+            expect(result.code).toBeUndefined();
+            // この状態のgit cloneはwarning付きで成功するが何もcheckoutしない。復旧ログと
+            // checkout結果の両方を確認する
+            expect(result.logs.some(l => l.includes('Checked out the remote branch "master"'))).toBe(true);
+            expect(hasSyncCommits()).toBe(true);
+            expect(hasSyncProject('shared')).toBe(true);
+            expect(result.logs.some(l => l.includes('Synced projects:'))).toBe(true);
+            expect(result.logs.some(l => l.includes('shared'))).toBe(true);
         });
     });
 
@@ -690,11 +790,12 @@ describe('sync clone/add/set/push/pull (TASK-12 test-first)', () => {
             expect(result.logs.some(l => l.includes('Remote repository has no commits yet. Run "tm sync push" to publish local data.'))).toBe(true);
         });
 
-        it('[covers:sync-adopt.missing-head-with-branches] default HEADが存在しないbranchを指しても、既存branchを空remoteと誤判定しない', () => {
+        it('[covers:sync-adopt.missing-head-with-branches] default HEADが存在しないbranchを指しbranchが複数ある場合は修復を促して停止する', () => {
             const remote = createBareRemote('master');
             seedRemote(remote, 'master', {
                 'projects/shared.json': JSON.stringify({ tasks: [] }, null, 2),
             });
+            pushBranchFrom(remote, 'legacy');
             spawnSync('git', ['-C', remote, 'symbolic-ref', 'HEAD', 'refs/heads/missing'], { stdio: 'pipe' });
 
             runExpectingExit(() => syncCommand(['add', '--id', 'shared']));
@@ -702,6 +803,25 @@ describe('sync clone/add/set/push/pull (TASK-12 test-first)', () => {
             expect(result.code).toBe(1);
             expect(result.logs.some(l => l.includes('Remote repository has no commits yet.'))).toBe(false);
             expect(result.errors.some(e => e.includes('Remote has branches but its default HEAD does not point to one.'))).toBe(true);
+        });
+
+        it('[covers:sync-adopt.sole-branch-adopt] HEADがdanglingでもremote branchが1本だけならそれをadoptして復旧する', () => {
+            const remote = createBareRemote('main');
+            pushSoleBranchLeavingHeadDangling(remote, {
+                'projects/shared.json': JSON.stringify({ tasks: [] }, null, 2),
+            });
+            runExpectingExit(() => syncCommand(['add', '--id', 'shared']));
+            const result = runExpectingExit(() => syncCommand(['set', '--remote', remote]));
+            expect(result.code).toBeUndefined();
+            expect(result.logs.some(l => l.includes('using the sole branch "master"'))).toBe(true);
+            expect(result.logs.some(l => l.includes('Adopted existing data from remote. (branch: master)'))).toBe(true);
+            expect(hasSyncProject('shared')).toBe(true);
+            const branchResult = spawnSync('git', ['-C', getSyncDir(), 'branch', '--show-current'], { encoding: 'utf-8' });
+            expect(branchResult.stdout.trim()).toBe('master');
+            // 復旧後のpullも（remote HEADが解決不能でも）sole branchから成功する
+            const pullResult = runExpectingExit(() => syncCommand(['pull']));
+            expect(pullResult.code).toBeUndefined();
+            expect(pullResult.errors.some(e => e.includes('Warning: git pull failed.'))).toBe(false);
         });
 
         it('[covers:sync-adopt.conflict-fails] 真のローカルデータがremoteと衝突する場合はcheckoutを失敗させ非破壊のまま通知する', () => {
@@ -896,6 +1016,55 @@ describe('sync clone/add/set/push/pull (TASK-12 test-first)', () => {
             expect(restoreLog).toContain('.gitignore');
             // タスク反映は通常どおり行われる
             expect(loadStore().tasks.some(t => t.summary === 'from remote')).toBe(true);
+        });
+
+        it('[covers:sync-pull.sole-branch-fallback] remote HEADが解決不能でもbranchが1本だけならそのbranchからpullする', () => {
+            const remote = createBareRemote('main');
+            pushSoleBranchLeavingHeadDangling(remote, {
+                'projects/test-project.json': JSON.stringify({ tasks: [] }, null, 2),
+            });
+            runExpectingExit(() => syncCommand(['clone', remote]));
+            runExpectingExit(() => syncCommand(['add', '--id', 'test-project']));
+
+            // dangling HEADのままremote側masterを進める
+            advanceSoleBranch(remote, 'master', {
+                'projects/test-project.json': JSON.stringify({
+                    tasks: [{
+                        id: 'TASK-1', status: 'todo', summary: 'advanced on remote', bodies: [], files: { read: [], edit: [] },
+                        created_at: '2026-01-01T00:00:00.000Z', updated_at: '2026-01-01T00:00:00.000Z', order: '1',
+                    }],
+                }, null, 2),
+            });
+
+            const result = runExpectingExit(() => syncCommand(['pull']));
+            expect(result.code).toBeUndefined();
+            // 修正前は git pull --rebase origin HEAD が couldn't find remote ref HEAD で失敗した
+            expect(result.errors.some(e => e.includes('Warning: git pull failed.'))).toBe(false);
+            expect(loadStore().tasks.some(t => t.summary === 'advanced on remote')).toBe(true);
+        });
+
+        it('[covers:sync-pull.preserve-nested-local-files] 親ディレクトリごと消えたnested pathの追跡済みローカルファイルも保持される', () => {
+            const remote = createBareRemote();
+            const nestedContent = JSON.stringify({ setting: 'local-only' });
+            seedRemote(remote, 'main', {
+                'config.json': JSON.stringify({ defaultAuto: true }, null, 2),
+                'local/settings.json': nestedContent,
+                'projects/test-project.json': JSON.stringify({ tasks: [] }, null, 2),
+            });
+            // 旧remoteをcloneしたPC-B（local/settings.json が追跡済み）
+            runExpectingExit(() => syncCommand(['clone', remote]));
+            runExpectingExit(() => syncCommand(['add', '--id', 'test-project']));
+
+            // 他PCの新版pushがremoteに入れた projects/ 外ファイルの削除commit。
+            // 適用時に local/ ディレクトリごと消えるため、復元には親ディレクトリの再生成が必要
+            untrackOutsideProjectsInRemote(remote, 'main');
+
+            const result = runExpectingExit(() => syncCommand(['pull']));
+            expect(result.code).toBeUndefined();
+            expect(existsSync(join(getSyncDir(), 'local', 'settings.json'))).toBe(true);
+            expect(readFileSync(join(getSyncDir(), 'local', 'settings.json'), 'utf-8')).toBe(nestedContent);
+            const restoreLog = result.logs.find(l => l.startsWith('Restored local files excluded from sync:'));
+            expect(restoreLog).toContain('local/settings.json');
         });
 
         it('[covers:sync-pull.project-not-found-guidance] 存在しないプロジェクトIDのpullFromSyncは案内2行を追加で表示する', () => {
