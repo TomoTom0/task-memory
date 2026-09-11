@@ -23,6 +23,7 @@ import {
     restoreMissingFilesOutsideProjects,
     getRemoteDefaultBranch,
     getRemoteHeadBranches,
+    probeRemoteUnbornDefaultBranch,
     resolveRemoteSyncBranch,
     shouldRenameLocalBranchToRemoteDefault,
 } from '../syncStore';
@@ -347,13 +348,19 @@ function handlePush(): void {
     // git push
     // ローカルの git 既定 branch（例: master）と remote の既定 branch（例: main）が異なる
     // 場合、そのまま push すると remote HEAD が実在しない branch を指したままとなり、
-    // 他PCの clone / adopt / pull が破綻する。remote 既定 branch 名が広告されており
-    // remote にまだ実在しない場合は、先にローカル branch をその名前へ rename してから push する
-    // （PR#46レビュー指摘対応）
+    // 他PCの clone / adopt / pull が破綻する。remote 既定 branch 名は ls-remote では
+    // unborn HEAD（空remote）から取得できないため、remote が空のときだけ clone の
+    // probe で広告名を取得し（PR#47レビュー指摘対応）、remote にまだ実在しない名前なら
+    // 先にローカル branch をその名前へ rename してから push する
     const branchResult = runGitCommandCapture(['rev-parse', '--abbrev-ref', 'HEAD']);
     const localBranch = branchResult.status === 0 ? branchResult.stdout.trim() : '';
     if (localBranch !== '' && localBranch !== 'HEAD' && isSafeGitUrl(localBranch)) {
-        const renameTo = shouldRenameLocalBranchToRemoteDefault(localBranch, getRemoteDefaultBranch(), getRemoteHeadBranches());
+        const remoteHeadBranches = getRemoteHeadBranches();
+        let remoteDefaultBranch = getRemoteDefaultBranch();
+        if (remoteDefaultBranch === null && remoteHeadBranches !== null && remoteHeadBranches.size === 0) {
+            remoteDefaultBranch = probeRemoteUnbornDefaultBranch(getSyncRemoteUrl());
+        }
+        const renameTo = shouldRenameLocalBranchToRemoteDefault(localBranch, remoteDefaultBranch, remoteHeadBranches);
         if (renameTo !== null) {
             const renameResult = runGitCommandCapture(['branch', '-m', localBranch, renameTo]);
             if (renameResult.status === 0) {

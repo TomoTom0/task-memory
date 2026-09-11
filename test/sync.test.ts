@@ -15,6 +15,8 @@ import {
     runGitCommandCapture,
     resolveRemoteSyncBranch,
     shouldRenameLocalBranchToRemoteDefault,
+    probeRemoteUnbornDefaultBranch,
+    unbornBranchFromProbeSymref,
 } from '../src/syncStore';
 import { loadStore, saveStore } from '../src/store';
 import type { TaskStore, Task } from '../src/types';
@@ -248,6 +250,38 @@ describe('syncStore', () => {
             expect(shouldRenameLocalBranchToRemoteDefault('master', '-x', new Set())).toBeNull();
             // ls-remote --headsの失敗
             expect(shouldRenameLocalBranchToRemoteDefault('master', 'main', null)).toBeNull();
+        });
+    });
+
+    describe('unbornBranchFromProbeSymref', () => {
+        it('[covers:sync-push.unborn-default-probe] probe cloneのsymbolic-ref出力から広告branch名を取り、sentinel・形式不正はnull', () => {
+            // 広告された既定branch名
+            expect(unbornBranchFromProbeSymref('refs/heads/main\n')).toBe('main');
+            // slashを含むbranch名
+            expect(unbornBranchFromProbeSymref('refs/heads/feature/x\n')).toBe('feature/x');
+            // sentinel（= 広告が無い場合のclone既定branch）は広告とみなさない
+            expect(unbornBranchFromProbeSymref('refs/heads/tm-sync-unborn-probe\n')).toBeNull();
+            // refs/heads/ 形式でない出力
+            expect(unbornBranchFromProbeSymref('refs/tags/v1\n')).toBeNull();
+            expect(unbornBranchFromProbeSymref('')).toBeNull();
+        });
+    });
+
+    describe('probeRemoteUnbornDefaultBranch', () => {
+        it('[covers:sync-push.unborn-default-probe] 空remoteのunborn HEAD広告をclone probeで取得する', () => {
+            // sync repo未初期化ではprobeしない
+            expect(probeRemoteUnbornDefaultBranch('https://example.com/repo.git')).toBeNull();
+
+            // 広告された既定branch名（main / trunk）が取得できる
+            initSyncRepo();
+            const mainRemote = createBareRemote('main');
+            expect(probeRemoteUnbornDefaultBranch(mainRemote)).toBe('main');
+            const trunkRemote = createBareRemote('trunk');
+            expect(probeRemoteUnbornDefaultBranch(trunkRemote)).toBe('trunk');
+
+            // clone失敗（到達不能remote）・unsafe URLはnull
+            expect(probeRemoteUnbornDefaultBranch(join(TMP_ROOT, 'nonexistent-probe-remote.git'))).toBeNull();
+            expect(probeRemoteUnbornDefaultBranch('ext::sh -c id')).toBeNull();
         });
     });
 });
@@ -881,6 +915,27 @@ describe('sync clone/add/set/push/pull (TASK-12 test-first)', () => {
             expect(ls.stdout).toContain('projects/test-project.json');
             expect(ls.stdout).not.toContain('config.json');
             expect(ls.stdout).not.toContain('.gitignore');
+        });
+
+        it('[covers:sync-push.rename-on-first-push-e2e] ローカルbranchとremote unborn既定branchが異なる場合、push前にrenameしてremote HEADの指す先を埋める', () => {
+            const remote = createBareRemote('main');
+            runExpectingExit(() => syncCommand(['add', '--id', 'test-project', '--remote', remote]));
+            // ローカルの git 既定branchが remote と異なる（master）状態を固定
+            expect(runGitCommandCapture(['symbolic-ref', 'HEAD', 'refs/heads/master']).status).toBe(0);
+
+            const result = runExpectingExit(() => syncCommand(['push']));
+            expect(result.code).toBeUndefined();
+            expect(result.logs.some(l => l.includes('Renamed local branch "master" to "main"'))).toBe(true);
+            // ローカルbranchはremote既定名へrenameされる
+            expect(runGitCommandCapture(['rev-parse', '--abbrev-ref', 'HEAD']).stdout.trim()).toBe('main');
+            // remote HEADの指す先（main）がpushで埋まり、別名branch（master）は作られない
+            const remoteHead = spawnSync('git', ['--git-dir', remote, 'symbolic-ref', 'HEAD'], { encoding: 'utf-8' });
+            expect(remoteHead.stdout.trim()).toBe('refs/heads/main');
+            expect(spawnSync('git', ['--git-dir', remote, 'rev-parse', '--verify', 'refs/heads/main'], { encoding: 'utf-8' }).status).toBe(0);
+            expect(spawnSync('git', ['--git-dir', remote, 'rev-parse', '--verify', 'refs/heads/master'], { encoding: 'utf-8' }).status).not.toBe(0);
+            // データも届く
+            const ls = spawnSync('git', ['--git-dir', remote, 'ls-tree', '-r', '--name-only', 'HEAD'], { encoding: 'utf-8' });
+            expect(ls.stdout).toContain('projects/test-project.json');
         });
 
         it('[covers:sync-push.config-local-only] 旧版で追跡済みのprojects/外ファイルはpush時にリモートから除外される', () => {

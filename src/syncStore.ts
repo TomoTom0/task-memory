@@ -1,6 +1,6 @@
 import { join, basename, dirname, resolve, sep } from 'path';
-import { homedir } from 'os';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, renameSync } from 'fs';
+import { homedir, tmpdir } from 'os';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, renameSync, mkdtempSync, rmSync } from 'fs';
 import { spawnSync } from 'child_process';
 import type { TaskStore, SyncConfig } from './types';
 
@@ -318,6 +318,49 @@ export function getRemoteHeadBranches(): Set<string> | null {
     return parseRemoteHeadBranches(result.stdout);
 }
 
+// 空 remote の unborn HEAD 広告を probe clone で判別するための sentinel。remote が
+// unborn HEAD の symref-target を広告しない場合、clone はこの名前を既定branchとして
+// 使うため、この名前が返ってきたら「広告が無い」と判定できる
+const UNBORN_PROBE_SENTINEL_BRANCH = 'tm-sync-unborn-probe';
+
+// probe clone の symbolic-ref HEAD 出力から、remote の unborn HEAD が広告した既定branch名を
+// 取る。sentinel（= 広告なし）・refs/heads/<name> 形式でない出力の場合は null
+export function unbornBranchFromProbeSymref(output: string): string | null {
+    const match = output.trim().match(/^refs\/heads\/(\S+)$/);
+    const branch = match?.[1];
+    if (branch === undefined || branch === UNBORN_PROBE_SENTINEL_BRANCH) {
+        return null;
+    }
+    return branch;
+}
+
+// 空 remote の unborn HEAD が指す既定branch名を、git clone の probe で取得する。
+// ls-remote は unborn HEAD の symref-target を出力しない（オブジェクトが存在しないため。
+// PR#47レビュー指摘で確認）が、git clone は protocol v2 の unborn 広告を消費して clone 先の
+// HEAD をその名前に設定する。空 remote の --bare clone は軽量なため、これを probe として
+// 使う。広告が無い（古い git の server/client）・clone が失敗した場合は null を返し、
+// 呼び出し側は rename を行わない（その場合は受信側の復旧で吸収される）。
+export function probeRemoteUnbornDefaultBranch(remoteUrl: string | null): string | null {
+    if (remoteUrl === null || !isSafeGitUrl(remoteUrl)) return null;
+    if (!isSyncInitialized()) return null;
+    const probeDir = mkdtempSync(join(tmpdir(), 'tm-sync-probe-'));
+    try {
+        // -c init.defaultBranch=<sentinel>: 広告が無い場合の clone 先 HEAD を sentinel に
+        // 固定し、広告有無を区別できるようにする。cwd は sync repo（相対URLの解決先を
+        // 他の git 操作と揃えるため）
+        const cloneResult = spawnSync('git', [
+            '-c', `init.defaultBranch=${UNBORN_PROBE_SENTINEL_BRANCH}`,
+            'clone', '--bare', '--quiet', remoteUrl, probeDir,
+        ], { cwd: getSyncDir(), encoding: 'utf-8', stdio: 'pipe' });
+        if (cloneResult.status !== 0) return null;
+        const symrefResult = spawnSync('git', ['symbolic-ref', 'HEAD'], { cwd: probeDir, encoding: 'utf-8', stdio: 'pipe' });
+        if (symrefResult.status !== 0) return null;
+        return unbornBranchFromProbeSymref(symrefResult.stdout);
+    } finally {
+        rmSync(probeDir, { recursive: true, force: true });
+    }
+}
+
 export type RemoteSyncBranchDecision =
     | { kind: 'branch'; branch: string; note: string | null }
     | { kind: 'remote-empty' }
@@ -352,8 +395,10 @@ export function resolveRemoteSyncBranch(symrefBranch: string | null, headBranche
 }
 
 // push 前にローカルの現在 branch を remote 既定 branch 名へ rename すべきかを判定する。
-// 条件: remote 既定 branch 名が広告されており・remote にまだ実在せず・ローカルの現在
-// branch 名と異なる場合。この状態でそのまま push すると remote HEAD は実在しない branch
+// 条件: remote 既定 branch 名が判明しており（通常は HEAD symref の広告。空 remote の
+// unborn HEAD に対しては probeRemoteUnbornDefaultBranch のprobe。ls-remote 単体では
+// unborn HEAD の広告は取れない）・remote にまだ実在せず・ローカルの現在 branch 名と
+// 異なる場合。この状態でそのまま push すると remote HEAD は実在しない branch
 // を指したままとなり、他PCの clone / adopt / pull が破綻するため、rename してから
 // push することで remote HEAD の指す先を埋める（PR#46レビュー指摘対応）。
 // rename 不要・できない場合は null を返す。
