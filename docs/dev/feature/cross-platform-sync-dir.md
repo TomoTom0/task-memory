@@ -40,5 +40,5 @@ medium
 
 - PR: #7
 - Thread ID: PRRT_kwDOQkMxZc5nif8t
-- タスク: TASK-5 (closed)
+- タスク: TASK-8 (pending)（旧DBのTASK-5 (closed)から起票し直し。v0.6.0リリース時の棚卸しで保持を決定）
 - 関連ファイル: src/syncStore.ts

@@ -31,6 +31,8 @@
 - `order.md` - order機能
 - `review.md` - review機能
 - `blocked.md` - blocked状態・gate（開始条件）
+- `sync-setup.md` - tm sync 初回セットアップ改善（clone/remote設定/自動adopt）
+- `test-isolation.md` - テスト隔離の共通基盤化（sandbox setup・実データ不変guard）
 
 ### dev/
 開発者向けドキュメント。
@@ -44,3 +46,9 @@
 
 - `2025-12-13-list-command-enhancements.md`
 - `2026-05-13-pnpm-migration-and-sync-improvements.md`
+
+### changelog/
+バージョン単位のCHANGELOG。リリース準備（release-prep）で `unreleased.md` から `vX.X.X.md` として作成される。
+
+- `unreleased.md` - 次期バージョン用テンプレート
+- `v0.2.0.md` 〜 `v0.6.0.md` - 各バージョンの変更内容

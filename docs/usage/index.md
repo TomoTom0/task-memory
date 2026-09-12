@@ -306,12 +306,40 @@ tm -G new "タスク"
 
 ### coding agentからの呼び出し
 
-環境変数 `CODING_AGENT_ROOT` が設定されている場合、そのパスをプロジェクトルートとして使用します。
+環境変数 `CODING_AGENT_ROOT` が空でない値に設定されている場合、そのパスを起点として親ディレクトリ方向へ `.git` を探索し、最初に見つかったGitリポジトリを使用します。monorepoのサブディレクトリを指定した場合も、リポジトリルートまで遡って解決します。相対パスを指定した場合はカレントディレクトリ基準で絶対パスに解決されます。空文字列は未設定として扱われ、カレントディレクトリ基準の探索になります。
+パスが存在しない場合、または遡っても `.git` が見つからない場合（homeディレクトリ配下ではhomeまで、それ以外ではファイルシステムのrootまで遡ります）は、Gitリポジトリ外としてエラーになります。
 この環境変数はcoding agent側で設定する必要があります。
 
 ## 同期 (`tm sync`)
 
 `~/.local/task-memory/` リポジトリ経由でタスクデータを管理・共有します。
+
+### 初回セットアップ
+
+PC-A（最初の1台）:
+
+```bash
+# syncに追加しつつremoteを設定（privateな空repoのURLを指定）
+tm sync add --id my-project --save --remote <url>
+
+# リモートにpush
+tm sync push
+```
+
+PC-B（2台目以降）:
+
+```bash
+# 既存のsync repoをclone
+tm sync clone <url>
+
+# 現在のプロジェクトをsyncに登録（PC-Aと同じIDを指定）
+tm sync add --id my-project
+
+# タスクを取得
+tm sync pull
+```
+
+remote未設定の状態で `tm sync push` / `tm sync pull` を実行すると、次の一手を示すガイド付きでexit 1します。
 
 ### 初期設定
 
@@ -321,13 +349,19 @@ tm sync add --save
 
 # IDを明示的に指定する場合
 tm sync add --id my-project --save
+
+# remoteを同時に設定する場合
+tm sync add --id my-project --save --remote <url>
 ```
 
-### sync IDの変更
+### sync ID・remote・モードの変更
 
 ```bash
 # sync IDを変更
 tm sync set --id new-name
+
+# remote URLを設定・変更（未同期のプロジェクトでも単体で実行可能）
+tm sync set --remote <url>
 
 # 同期モードを変更（auto: タスク変更時に自動でsave）
 tm sync set auto
@@ -338,6 +372,8 @@ tm sync set --id new-name auto
 ```
 
 ### データの保存とpush
+
+同期対象は `projects/` 配下のタスクデータのみです。`config.json` などの同期クライアント設定は同期されません。旧バージョンがremoteへcommit済みの `projects/` 外ファイル（`config.json`・`.gitignore` 等）は、次回の `tm sync push` でremoteから除外されます（ローカルのファイルは削除されません）。
 
 ```bash
 # ローカルに保存
@@ -357,12 +393,16 @@ tm sync pull
 tm sync pull --merge
 ```
 
+他PCのpushによってremoteから `projects/` 外ファイル（`config.json`・`.gitignore` 等）が削除されても、pullを実行したPCのローカルファイルは削除されず保持されます（`Restored local files excluded from sync:` が表示されます）。
+
 ### 状態確認
 
 ```bash
 tm sync status
 tm sync list
 ```
+
+`tm sync status` は `Remote: <URL>` または `Remote: Not configured` の行でremote URLの設定状態を表示します。
 
 ## ドキュメントの表示 (`tm docs`)
 

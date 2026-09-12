@@ -14,15 +14,10 @@ function setupTasks(tasks: Task[]) {
 }
 
 describe('getCurrentCommit', () => {
-    it('should return undefined in non-git directory', () => {
-        // The test helpers create a .git dir but it's not a real git repo,
-        // so getCurrentCommit returns undefined
-        const result = getCurrentCommit();
-        // In test environment, .git exists but is not a real repo
-        // result is either undefined or a 7-char hash
-        if (result !== undefined) {
-            expect(result).toMatch(/^[0-9a-f]{7,}$/);
-        }
+    it('should return undefined outside a real git repository', () => {
+        // setup.tsがcwdとするsandbox projectの.gitは空ディレクトリ（実repoではない）。
+        // git rev-parseは失敗し、決定的にundefinedを返す
+        expect(getCurrentCommit()).toBeUndefined();
     });
 });
 
