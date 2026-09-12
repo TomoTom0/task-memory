@@ -831,6 +831,62 @@ HOME差し替えをファイル全体のbeforeEach/afterEachに変更したこ�
 
 旧remote（`config.json` を追跡済み）からclone・adoptするPC-Bでは、remote側の追跡ファイルとローカルの未追跡 `config.json` の衝突が引き続き発生するため、`adoptRemoteIntoEmptyRepo()` の退避ロジックは残置する。新規に初期化されたPC-Aのpushは本変更により `config.json` を含まなくなるため、新規remoteではこの衝突自体が起きない。
 
+## 既定branch名不一致の復旧とnested path復元（PR#46レビュー指摘対応）
+
+v0.6.0リリースPRのレビューで指摘された2件（P1）への対応。
+
+### 背景1: ローカルとremoteのgit既定branch名の不一致
+
+`initSyncRepo()` は `git init` に `--initial-branch` を渡さず、ローカルのgit既定branch（環境により `master`）で初期化される。一方、空のforge repo（GitHub等）のHEADは `main` 等を指す。この状態で `add --remote` → `push` すると、pushは `HEAD` と同名のbranch（`master`）を作るだけでremote HEADの指す先（`main`）は埋まらず、remote HEADがdangling（実在しないbranchを指す）状態になる。このremoteに対して2台目は:
+
+- `clone` はwarning付きで成功するが何もcheckoutしない（remote-tracking refは作られる）
+- `add` / `set --remote` の自動adoptはbranchを決定できず拒否する
+- `pull` は `git pull --rebase origin HEAD` が `couldn't find remote ref HEAD` で失敗する
+
+### 実装1: branch解決の一元化と4経路の復旧
+
+dangling HEADやunborn HEADのsymrefは `ls-remote` の出力に現れない（指す先のオブジェクトが存在しないため。file/path transport・forgeいずれも同じ）ため、判定は「HEAD symrefの広告（`getRemoteDefaultBranch()`）× 実在head branch集合（`getRemoteHeadBranches()`）」の組合せで行う。この組合せから採用branchを決める純粋関数 `resolveRemoteSyncBranch(symrefBranch, headBranches)`（syncStore.ts）を新設し、次の4経路で使う:
+
+- **push（予防）**: `shouldRenameLocalBranchToRemoteDefault()`（同）が、remote既定branch名が判明しており・remoteにまだ実在せず・ローカルの現在branch名と異なる場合にrename先を返す。remote既定branch名は通常はsymref広告から、空remote（unborn HEAD）に対しては後述の `probeRemoteUnbornDefaultBranch()` のprobeから得る。handlePushは該当時のみ `git branch -m` でローカルbranchをremote既定名へrenameしてからpushし、remote HEADの指す先を埋める
+- **adopt（復旧）**: `adoptRemoteIntoEmptyRepo()` はresolverの結果に従う。HEAD symrefが無い・指す先が未実在でも、head branchが1本だけならそのbranchを採用する。headが複数ある場合は従来どおり修復を促して停止（`sync-adopt.missing-head-with-branches`）
+- **clone（復旧）**: clone成功後にcheckoutされていない（`hasSyncCommits()` がfalse）場合、remote-tracking branchが1本だけなら `git checkout -B <branch> origin/<branch>` で復旧する
+- **pull（復旧）**: resolverがbranchを決定できた場合（HEAD解決不能かつsole branchを含む）はそのbranchからpullし、`origin HEAD` の解決失敗で警告に出力が止まることを防ぐ
+
+symrefが未実在branchを指す×head 0本（forgeのunborn広告）はremote-empty扱いとし、commitが1つも無いremoteでの誤adoptを防ぐ。branch名はremote由来の値をgit引数へ渡すため、従来どおり `isSafeGitUrl()` と同じ境界で検証する。
+
+### 背景2: nested path復元時の親ディレクトリ消失
+
+projects/外の追跡済みパスがnested path（例: `local/settings.json`）の場合、remoteの削除commitの適用は空になった親ディレクトリ（`local/`）ごと作業ツリーから消す。`restoreMissingFilesOutsideProjects()` の `writeFileSync` は親ディレクトリ不存在のENOENTで失敗し、pull済みのローカルファイルを復元できないままcommandが中断していた。
+
+### 実装2: 書き戻し前の親ディレクトリ再生成
+
+`restoreMissingFilesOutsideProjects()` は書き戻し前に `mkdirSync(dirname(path), { recursive: true })` で親ディレクトリを再生成する。
+
+### テスト
+
+`test/design/sync-setup.toml` に条件6件を追加し、1件（`sync-adopt.missing-head-with-branches`）をbranch複数の場合の拒否に限定して更新した:
+
+- `sync-clone.dangling-head-sole-branch` / `sync-adopt.sole-branch-adopt` / `sync-pull.sole-branch-fallback`: dangling HEADのbare remoteへmasterだけをpush済みの状態（`pushSoleBranchLeavingHeadDangling` helperで構築）でのe2e復旧
+- `sync-adopt.branch-resolution-logic` / `sync-push.rename-to-remote-default-logic`: resolver・rename判定の純粋関数の全分岐（ローカルe2eで再現できないforgeのunborn HEAD広告等を含む）
+- `sync-pull.preserve-nested-local-files`: 親ディレクトリごと消えたnested pathの復元
+
+各e2eテストは修正前の実装では失敗すること（ENOENT・adopt拒否・pull警告）を確認済み。
+
+### push予防のprobe取得（PR#47レビュー指摘対応）
+
+PR#47（上記対応のPR）へのレビューで指摘された: `ls-remote --symref` はunborn HEAD（空remote）のsymref-targetを出力しない（オブジェクトが存在しないため。dangling HEADも同様。Git 2.43・2.53で動作確認）。このため `getRemoteDefaultBranch()` は空remoteで常にnullを返し、上記push予防のrename分岐は実gitの挙動では発火し得なかった。
+
+一方 `git clone`（`--bare` 含む）はprotocol v2のls-refs `unborn` capabilityを消費し、clone先のHEADをremoteが広告した既定branch名へ設定する（`-c init.defaultBranch` の指定より優先）。そこでhandlePushは、remoteのhead branchが空（最初のpush）かつsymref広告が無いときだけ `probeRemoteUnbornDefaultBranch()`（syncStore.ts）が次のprobeを実行する:
+
+```
+git -c init.defaultBranch=tm-sync-unborn-probe clone --bare --quiet <remoteUrl> <tempDir>
+git -C <tempDir> symbolic-ref HEAD
+```
+
+sentinel名（`tm-sync-unborn-probe`）が返った場合は「広告が無い」と判定してrenameしない。これは古いgitのserver/client（unborn広告に非対応）での安全な縮退であり、その場合も受信側の復旧（adopt / clone / pull）で吸収される。probeのclone失敗・unsafe URL・sync repo未初期化も同様に何もしない。probeは空remoteのcloneのみで軽量なため、最初のpush時のみに限って実行される。
+
+テスト: `sync-push.unborn-default-probe`（`unbornBranchFromProbeSymref` のparse分岐 + probe本体の取得・失敗系）、`sync-push.rename-on-first-push-e2e`（ローカルmaster × 空remote unborn main のe2e。rename実施・remote HEAD解決・別名branch不存在を検証）を追加した。
+
 ## 実装順序
 
 1. syncStore.ts: パス遅延計算化（既存テストが全greenであることを確認）
