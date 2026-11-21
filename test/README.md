@@ -20,10 +20,10 @@ vitestで実行する（`pnpm test`）。ファイルは `test/*.test.ts` にフ
 | `index.test.ts` | `isMainEntry`（symlink-aware direct invocation check）、`getHelpText` |
 | `list.test.ts` | `tm list` |
 | `new.test.ts` | `tm new` の引数パース |
-| `orderUtils.test.ts` | `parseOrder` / `isValidOrderFormat` / `formatOrder` |
+| `orderUtils.test.ts` | `parseOrder` / `formatOrder` / `compareOrders` / `isValidOrderFormat` / `normalizeOrders`（order重複の優先度込み解消を含む） / `sortByOrder` |
 | `review.test.ts` | `tm review` |
 | `statusGuard.test.ts` | `statusGuard` |
-| `store.test.ts` | `saveTasks` のorder重複解消 |
+| `store.test.ts` | `saveTasks` / `saveTasksWithOrder` のorder重複解消 |
 | `sync.test.ts` | `syncStore` / `syncCommand`（`tm sync` サブコマンド群） |
 | `update.test.ts` | `tm update` の引数パース、blocked/gate |
 | `global-setup.ts` | 実データ不変guard（globalSetup/teardown。run前後で監視対象5点のhash比較） |
@@ -40,6 +40,9 @@ env操作・os mock）を書かない**。sandbox構造・各設定の理由は 
 - 全テストファイルのHOME・cwdは `/tmp/tm-test-sandbox-*` 配下に限定され、実データ
   （repo側DB 2点・home側 3点）へは到達しない。sandboxはworker終了時（SIGTERM handler）
   に自己削除される
+- `vitest.config.ts`の`exclude`で`tmp/`（スクラッチ領域）をテスト探索対象外にしている。
+  作業ログ・採取物・他ユーザー由来の権限なし残留dirなど、テストと無関係なファイルによる
+  glob走査の失敗を防ぐため（defaultのexcludeは指定で置換されるため`node_modules`等は再掲）
 - 実データguard（`test/global-setup.ts`）がrun前後で監視対象5点（repo側2点+home側3点）の
   存在+内容hashを比較し、不一致ならrunをexit code 1で失敗させる（常設）
 - **前提崩しオプションの注意**: `--no-isolate`、`--pool=threads`、`--singleFork`、

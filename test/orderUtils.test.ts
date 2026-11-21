@@ -4,7 +4,6 @@ import {
     formatOrder,
     compareOrders,
     normalizeOrders,
-    resolveDuplicateOrders,
     sortByOrder,
     isValidOrderFormat,
 } from "../src/utils/orderUtils";
@@ -240,169 +239,137 @@ describe("normalizeOrders", () => {
     });
 });
 
-describe("resolveDuplicateOrders", () => {
-    test("重複が無ければ入力をそのまま返す", () => {
-        const input = ["1", "2", "3"];
-        const result = resolveDuplicateOrders(input, [-1, -1, -1]);
-        expect(result).toEqual(["1", "2", "3"]);
+describe("normalizeOrders: order重複の解消（優先度込み）", () => {
+    // 期待値は、置換前の resolveDuplicateOrders() -> normalizeOrders() パイプラインの
+    // 出力をリファクタリング前に採取・固定化したもの（TASK-9）。
+    // 優先度が最も高い要素（勝者）が元の値の位置を保持し、他の要素（敗者）は
+    // 優先度順で勝者と次に大きい既存値の間に配置される。間隔がulp級の高精度orderの
+    // 2件のみ、旧実装の浮動小数点丸めによる逸脱（敗者が次の既存値を追い越す）を
+    // 修正しており、設計意図どおりの配置を期待値としている。
+
+    test("重複が無ければ従来どおり連番に正規化される", () => {
+        expect(normalizeOrders(["1", "2", "3"], [-1, -1, -1])).toEqual(["1", "2", "3"]);
+        expect(normalizeOrders(["1", "3", "5"], [-1, -1, -1])).toEqual(["1", "2", "3"]);
+        // priorities 省略時も同じ（全要素未設定扱い）
+        expect(normalizeOrders(["1", "3", "5"])).toEqual(["1", "2", "3"]);
     });
 
     test("単純な重複2件、priorityが高い方が元の値を保持する", () => {
-        // index0="1"(prio -1), index1="1"(prio 5) -> index1が勝者
-        const result = resolveDuplicateOrders(["1", "1"], [-1, 5]);
-        expect(result[1]).toBe("1");
-        expect(result[0]).not.toBe("1");
-        // 敗者は勝者(1)と次の既存値(無いので1+1=2)の間に収まる
-        expect(Number(result[0])).toBeGreaterThan(1);
-        expect(Number(result[0])).toBeLessThan(2);
-
-        // normalizeOrders に通すと重複なく分離される
-        const normalized = normalizeOrders(result);
-        expect(new Set(normalized)).toEqual(new Set(["1", "2"]));
-        expect(normalized[1]).toBe("1"); // 勝者が希望通り1を得る
+        // index0="1"(prio -1), index1="1"(prio 5) -> index1が勝者で"1"を保持
+        const result = normalizeOrders(["1", "1"], [-1, 5]);
+        expect(result).toEqual(["2", "1"]);
     });
 
-    test("重複3件以上でも、priority順に段階的にオフセットされ最終的に連番として分離される", () => {
+    test("重複3件以上でも、priority順に勝者の直後へ連続して配置される", () => {
         // index2(prio 9) > index0(prio 3) > index1(prio -1)
-        const input = ["1", "1", "1"];
-        const priorities = [3, -1, 9];
-        const resolved = resolveDuplicateOrders(input, priorities);
-        expect(new Set(resolved).size).toBe(3); // 全て別の値になっている
-
-        const normalized = normalizeOrders(resolved);
-        expect(new Set(normalized)).toEqual(new Set(["1", "2", "3"]));
-        // priorityが最も高いindex2が"1"を獲得する
-        expect(normalized[2]).toBe("1");
+        const result = normalizeOrders(["1", "1", "1"], [3, -1, 9]);
+        expect(result).toEqual(["2", "3", "1"]);
     });
 
     test("全員priority未設定(-1)の場合、元の配列インデックスが早い方が勝つ", () => {
-        const result = resolveDuplicateOrders(["1", "1"], [-1, -1]);
-        expect(result[0]).toBe("1"); // インデックスが早い方が勝者
-        expect(result[1]).not.toBe("1");
+        const result = normalizeOrders(["1", "1"], [-1, -1]);
+        expect(result).toEqual(["1", "2"]);
     });
 
-    test("階層構造での重複でも最後のセグメントのみがオフセットされる", () => {
-        const result = resolveDuplicateOrders(["1-2", "1-2"], [-1, 7]);
-        expect(result[1]).toBe("1-2"); // 勝者
-        expect(result[0]).toMatch(/^1-2\./); // 親("1")は維持され、最後のセグメントのみ変化
+    test("敗者は勝者と次に大きい既存値の間に配置される（整数の既存値）", () => {
+        const result = normalizeOrders(["1", "1", "2"], [-1, 8, -1]);
+        expect(result).toEqual(["2", "1", "3"]);
     });
 
-    test("null/undefinedはグループ化対象外でそのまま返される", () => {
-        const result = resolveDuplicateOrders(["1", null, "1", undefined], [-1, -1, 5, -1]);
-        expect(result[1]).toBeNull();
-        expect(result[3]).toBeUndefined();
+    test("敗者は勝者と次に大きい既存値の間に配置される（小数の既存値）", () => {
+        const result = normalizeOrders(["1", "1", "1.5"], [-1, 5, -1]);
+        expect(result).toEqual(["2", "1", "3"]);
+    });
+
+    test("重複値自体が小数でも同じ規則で解消される", () => {
+        const result = normalizeOrders(["1.5", "1.5", "3"], [-1, 4, -1]);
+        expect(result).toEqual(["2", "1", "3"]);
+    });
+
+    test("隣接する2つの重複グループが互いに影響しない", () => {
+        // "1"グループ(index0,1)と"1.5"グループ(index2,3)が隣接
+        const result = normalizeOrders(["1", "1", "1.5", "1.5"], [-1, 5, -1, 7]);
+        expect(result).toEqual(["2", "1", "4", "3"]);
+    });
+
+    test("階層構造での重複は最後のセグメントのみが解消される", () => {
+        const result = normalizeOrders(["1-2", "1-2"], [-1, 7]);
+        expect(result).toEqual(["1-2", "1-1"]);
+    });
+
+    test("階層構造+孫がいる複合ケース: 孫の親番号は確保されたまま解消される", () => {
+        // "1-2"が2件重複しており、別タスクが"1-2-1"を持つ
+        const result = normalizeOrders(["1-2", "1-2", "1-2-1"], [-1, 7, -1]);
+        expect(result).toEqual(["1-2", "1-1", "1-1-1"]);
+        // 勝者(index1)が敗者(index0)より前(小さい)順序になる
+        expect(compareOrders(result[1], result[0])).toBeLessThan(0);
+    });
+
+    test("重複タスクが子を持つ場合、子は勝者の配下に正規化される", () => {
+        // "1"が2件重複し、その下に"1-1"がいる。子の親("1")は勝者の番号を引き継ぐ
+        const result = normalizeOrders(["1", "1", "1-1"], [-1, 5, -1]);
+        expect(result).toEqual(["2", "1", "1-1"]);
+    });
+
+    test("複数レベルで同時に重複していても各レベルで独立に解消される", () => {
+        const result = normalizeOrders(
+            ["2", "2", "2-1", "2-1", "2-2"],
+            [-1, 5, -1, 3, -1]
+        );
+        expect(result).toEqual(["2", "1", "1-2", "1-1", "1-3"]);
+    });
+
+    test("null/undefinedは解消対象外でそのまま返される", () => {
+        const result = normalizeOrders(["1", null, "1", undefined], [-1, -1, 5, -1]);
+        expect(result).toEqual(["2", null, "1", null]);
     });
 
     test("非有限セグメント(Infinity)を含むorderは重複解消の対象外になりハングしない", () => {
-        // "9"x400 は parseFloat すると Infinity。重複"1"の次の既存値が
-        // Infinity になると、nextUp(Infinity) が Infinity を返し続けて
-        // while ループが終了しない（保存操作のハング）ため、これを除外する
+        // "9"x400 は parseFloat すると Infinity（旧データ・import経由で入りうる）。
+        // 有限値への分離が不可能なため集約され、無限ループにもならない
         const huge = "9".repeat(400);
-        const input = ["1", "1", huge];
-        const result = resolveDuplicateOrders(input, [-1, 5, -1]);
-        // 巨大数字列のエントリはそのまま、重複"1"は解消される
-        expect(result[2]).toBe(huge);
-        expect(result[1]).toBe("1"); // 勝者
-        expect(Number(result[0])).toBeGreaterThan(1);
-        expect(Number(result[0])).toBeLessThan(2);
+        const result = normalizeOrders(["1", "1", huge], [-1, 5, -1]);
+        expect(result).toEqual(["2", "1", "3"]);
     });
 
-    test("successorがInfinityになる値(MAX_VALUE)の重複は解消を断念してハングしない", () => {
-        // Number.MAX_VALUE は有限のため、入力検証を通過した既存データ・
-        // インポート経由で入りうる値。winnerLast + 1 が丸めで winnerLast の
-        // ままになり、敗者の割り当てが nextUp(MAX_VALUE) = Infinity に到達、
-        // 以降 nextUp(Infinity) が Infinity を返し続けて永久ループする。
-        // 割り当て可能な有限値の枯渇は断念（元の値のまま）で打ち切る
+    test("非有限値同士の重複は1つの番号に集約される", () => {
+        const huge = "9".repeat(400);
+        const result = normalizeOrders([huge, huge], [-1, 5]);
+        expect(result).toEqual(["1", "1"]);
+    });
+
+    test("Number.MAX_VALUEの重複は解消を断念して1つの番号に集約される", () => {
+        // Number.MAX_VALUE は有限のため入力検証の対象外になり得る既存データ・
+        // インポート経由の値。分離先の有限値が存在しないため集約する
+        // （旧 resolveDuplicateOrders の断念時と同じ挙動）
         const maxValueDigits = "17976931348623157" + "0".repeat(292);
-        const input = [maxValueDigits, maxValueDigits, maxValueDigits];
-        const result = resolveDuplicateOrders(input, [-1, 5, -1]);
-        // 割り当てられない敗者は元の値のまま（Infinity を含む order は生成されない）
-        expect(result).toEqual(input);
+        const result = normalizeOrders(
+            [maxValueDigits, maxValueDigits, maxValueDigits],
+            [-1, 5, -1]
+        );
+        expect(result).toEqual(["1", "1", "1"]);
         expect(result.every((o) => o == null || !o.includes("Infinity"))).toBe(true);
     });
 
-    test("resolveDuplicateOrders -> normalizeOrders で最終的に重複の無い連番になる(end-to-end)", () => {
-        const input = ["1", "1", "2"];
-        const priorities = [-1, 8, -1];
-        const resolved = resolveDuplicateOrders(input, priorities);
-        const normalized = normalizeOrders(resolved);
-        expect(new Set(normalized)).toEqual(new Set(["1", "2", "3"]));
-        expect(normalized[1]).toBe("1"); // 勝者(index1)が1を獲得
-    });
-
-    test("クロスグループ衝突: 2つの重複グループが隣接していても互いに衝突しない", () => {
-        // "1"グループ(index0,1)と"1.5"グループ(index2,3)が隣接
-        const input = ["1", "1", "1.5", "1.5"];
-        const priorities = [-1, 5, -1, 7];
-        const resolved = resolveDuplicateOrders(input, priorities);
-        // resolveDuplicateOrders自体の出力段階で重複が無いこと
-        const nonNull = resolved.filter((v): v is string => v != null);
-        expect(new Set(nonNull).size).toBe(nonNull.length);
-
-        const normalized = normalizeOrders(resolved);
-        const normalizedNonNull = normalized.filter((v): v is string => v != null);
-        expect(new Set(normalizedNonNull).size).toBe(normalizedNonNull.length);
-        expect(normalized[1]).toBe("1"); // "1"グループの勝者
-        expect(normalized[3]).toBe("3"); // "1.5"グループの勝者(全体で3番目)
-    });
-
-    test("クロスグループ衝突: 敗者のオフセットが既存の単独値と衝突しない", () => {
-        // "1"の重複を解消するオフセットが、単独で存在する"1.5"と衝突しないこと
-        const input = ["1", "1", "1.5"];
-        const priorities = [-1, 5, -1];
-        const resolved = resolveDuplicateOrders(input, priorities);
-        expect(resolved[2]).toBe("1.5"); // 単独値は変化しない
-        expect(resolved[0]).not.toBe("1.5"); // 敗者のオフセットが衝突していない
-
-        const normalized = normalizeOrders(resolved);
-        const nonNull = normalized.filter((v): v is string => v != null);
-        expect(new Set(nonNull).size).toBe(nonNull.length);
-    });
-
-    test("階層構造+孫がいる複合エッジケース: クラッシュせず勝者と敗者の相対順序が保たれる", () => {
-        // "1-2"が2件重複しており、別タスクが"1-2-1"を持つ
-        const input = ["1-2", "1-2", "1-2-1"];
-        const priorities = [-1, 7, -1];
-        expect(() => {
-            const resolved = resolveDuplicateOrders(input, priorities);
-            normalizeOrders(resolved);
-        }).not.toThrow();
-
-        const resolved = resolveDuplicateOrders(input, priorities);
-        const normalized = normalizeOrders(resolved);
-        const nonNull = normalized.filter((v): v is string => v != null);
-        expect(new Set(nonNull).size).toBe(nonNull.length); // 重複が無い
-        // 勝者(index1)が敗者(index0)より前(小さい)順序になる
-        expect(compareOrders(normalized[1], normalized[0])).toBeLessThan(0);
-    });
-
-    test("間隔がulp級の高精度orderでも丸めにより重複が残らない", () => {
+    test("間隔がulp級の高精度orderでも敗者は勝者と次の既存値の間に配置される", () => {
         // 1.0000000000000002 は 1 の次の表現可能値で、その間に中間値は存在しない。
-        // 均等分割 1 + 1.11e-16 は 1 へ丸め込まれるため、nextUp 相当の補正が必要。
+        // 旧実装では丸めにより敗者がこの既存値を追い越していたが、設計意図である
+        // 「勝者と次の既存値の間」への配置が直接実装により保証される
         const next = 1.0000000000000002;
-        const input = ["1", "1", String(next)];
-        const priorities = [-1, 5, -1];
-        const resolved = resolveDuplicateOrders(input, priorities);
-        const nonNull = resolved.filter((v): v is string => v != null);
-        expect(new Set(nonNull).size).toBe(nonNull.length); // 出力段階で重複なし
-
-        const normalized = normalizeOrders(resolved);
-        const normalizedNonNull = normalized.filter((v): v is string => v != null);
-        expect(new Set(normalizedNonNull).size).toBe(normalizedNonNull.length);
-        expect(normalized[1]).toBe("1"); // 勝者が1を保持
+        const result = normalizeOrders(["1", "1", String(next)], [-1, 5, -1]);
+        expect(result).toEqual(["2", "1", "3"]);
+        expect(compareOrders(result[0], result[2])).toBeLessThan(0); // 敗者 < 既存値
     });
 
-    test("間隔がulp級でも敗者が複数なら全員distinctな値に分離される", () => {
+    test("間隔がulp級でも敗者が複数なら全員distinctな連番に分離される", () => {
         const next = 1.0000000000000002;
-        const input = ["1", "1", "1", String(next)];
-        const priorities = [-1, 3, 5, -1];
-        const resolved = resolveDuplicateOrders(input, priorities);
-        const nonNull = resolved.filter((v): v is string => v != null);
-        expect(new Set(nonNull).size).toBe(nonNull.length);
-
-        const normalized = normalizeOrders(resolved);
-        const normalizedNonNull = normalized.filter((v): v is string => v != null);
-        expect(new Set(normalizedNonNull)).toEqual(new Set(["1", "2", "3", "4"]));
+        const result = normalizeOrders(
+            ["1", "1", "1", String(next)],
+            [-1, 3, 5, -1]
+        );
+        const nonNull = result.filter((v): v is string => v != null);
+        expect(new Set(nonNull)).toEqual(new Set(["1", "2", "3", "4"]));
+        expect(result).toEqual(["3", "2", "1", "4"]);
     });
 });
 

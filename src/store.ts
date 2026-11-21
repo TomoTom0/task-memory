@@ -3,7 +3,7 @@ import { homedir } from 'os';
 import { existsSync, readFileSync, writeFileSync, statSync, realpathSync } from 'fs';
 import { spawnSync } from 'child_process';
 import type { Task, TaskStore, SyncConfig } from './types';
-import { normalizeOrders, resolveDuplicateOrders } from './utils/orderUtils';
+import { normalizeOrders } from './utils/orderUtils';
 
 let globalMode = false;
 
@@ -136,9 +136,9 @@ export function loadTasks(): Task[] {
  *
  * @param recentlySetOrderIds 今回の操作で order を設定したタスクIDの適用順（末尾が最新）。
  *   重複するorder値がある場合、ここに含まれる（＝より末尾に近い）タスクが優先され、
- *   他のタスクが繰り下げられる。渡さない場合は、タスク配列内の出現順で決定的に解消される。
+ *   他のタスクが繰り下げられる。空の場合は、タスク配列内の出現順で決定的に解消される。
  */
-export function normalizeTaskOrders(tasks: Task[], recentlySetOrderIds: string[] = []): Task[] {
+export function normalizeTaskOrders(tasks: Task[], recentlySetOrderIds: string[]): Task[] {
     // todo, wip のタスクのインデックスと order を収集
     const activeIndices: number[] = [];
     const activeOrders: (string | null)[] = [];
@@ -152,10 +152,10 @@ export function normalizeTaskOrders(tasks: Task[], recentlySetOrderIds: string[]
         }
     });
 
-    // 同一order値の重複を、適用順が新しい方を優先して微小な値に分離してから正規化する
+    // 同一order値の重複を、適用順が新しい方を優先して解消しつつ連番に正規化する
+    // （重複解消は normalizeOrders() 本体が優先度込みで直接行う）
     const priorities = activeIds.map((id) => recentlySetOrderIds.lastIndexOf(id));
-    const resolvedOrders = resolveDuplicateOrders(activeOrders, priorities);
-    const normalizedOrders = normalizeOrders(resolvedOrders);
+    const normalizedOrders = normalizeOrders(activeOrders, priorities);
 
     // 結果を反映
     const result = tasks.map((task, index) => {
@@ -175,7 +175,21 @@ export function normalizeTaskOrders(tasks: Task[], recentlySetOrderIds: string[]
     return result;
 }
 
-export function saveTasks(tasks: Task[], recentlySetOrderIds: string[] = []): void {
+/**
+ * タスク配列を保存する（order の変更を伴わないコマンド用）。
+ * order の正規化のみ行い、重複はタスク配列の出現順で決定的に解消される。
+ * order を設定したコマンドは saveTasksWithOrder() で適用順を明示すること
+ */
+export function saveTasks(tasks: Task[]): void {
+    saveTasksWithOrder(tasks, []);
+}
+
+/**
+ * タスク配列を、今回 order を設定したタスクの適用順を明示して保存する。
+ * 重複する order 値がある場合、recentlySetOrderIds の末尾に近い（＝より新しい）
+ * タスクが優先される
+ */
+export function saveTasksWithOrder(tasks: Task[], recentlySetOrderIds: string[]): void {
     // sync設定を保持しつつtasksを更新
     const store = cachedStore || loadStore();
     // order を正規化

@@ -27,3 +27,11 @@ low
 
 - タスク: TASK-9 (long)（旧DBのTASK-40から起票し直し。v0.6.0リリース時の棚卸しで保持を決定）
 - 関連ファイル: src/utils/orderUtils.ts, src/store.ts
+
+## 対応済み（TASK-9）
+
+`normalizeOrders(orders, priorities?)` を `Map<parentKey, Map<value, {members}>>` 構造で直接実装し、`resolveDuplicateOrders()` と `nextUp()` を削除して一本化した。優先度が最も高い要素（勝者）が元の値の位置を保持し、敗者は優先度順（priority 降順 → 入力順）で勝者と次に大きい既存値の間に連続して配置される。非有限値（Infinity）と `Number.MAX_VALUE` の重複は分離先の有限値が存在しないため従来どおり1つの番号に集約する（旧実装の断念時と同じ挙動）。
+
+`saveTasks()` も設計案どおり分離した: order を設定するコマンド用の `saveTasksWithOrder(tasks, recentlySetOrderIds)`（適用順の明示が必須）と、order を変更しないコマンド用の `saveTasks(tasks)`。`normalizeTaskOrders()` の第2引数も必須化した（sync.ts の直接呼び出しは `[]` 明示に修正）。
+
+置換前後の等価性は、旧 `resolveDuplicateOrders() -> normalizeOrders()` パイプラインの出力をリファクタリング前に採取・固定化し、新しいテストの期待値として全ケース一致を確認した（`test/orderUtils.test.ts`）。間隔がulp級の高精度orderの2ケースのみ、旧実装の浮動小数点丸めにより敗者が次の既存値を追い越していた箇所を、設計意図である「勝者と次の既存値の間」への配置に修正している。

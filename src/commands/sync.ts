@@ -463,7 +463,7 @@ function handlePull(options: Record<string, string | boolean>): void {
                 }
             }
         }
-        currentStore.tasks = normalizeTaskOrders(mergedTasks);
+        currentStore.tasks = normalizeTaskOrders(mergedTasks, []);
         saveStore(currentStore);
         let msg = `Merged from sync repository. (${remoteStore.tasks.length} tasks)`;
         if (idCollisions > 0) msg += ` ID collisions resolved: ${idCollisions}.`;
@@ -471,7 +471,7 @@ function handlePull(options: Record<string, string | boolean>): void {
         console.log(msg);
     } else {
         // 上書きモード
-        currentStore.tasks = normalizeTaskOrders(remoteStore.tasks);
+        currentStore.tasks = normalizeTaskOrders(remoteStore.tasks, []);
         saveStore(currentStore);
         console.log(`Pulled from sync repository. (${remoteStore.tasks.length} tasks)`);
     }

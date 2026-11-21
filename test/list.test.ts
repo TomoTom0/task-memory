@@ -157,7 +157,7 @@ describe('tm list command', () => {
     });
 
     it('should sort by ID when non-null orders are duplicated (raw store data bypassing normalization)', () => {
-        // list.ts は loadTasks() を直接呼ぶため saveTasks() の正規化(resolveDuplicateOrders)を
+        // list.ts は loadTasks() を直接呼ぶため saveTasks() の正規化(order重複解消)を
         // 経由しない生データ(手動編集/レガシーデータ等)を表示することがある。
         // そのケースで sortByOrder の ID タイブレークが機能することを確認する。
         saveStore({
