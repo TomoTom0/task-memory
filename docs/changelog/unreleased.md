@@ -2,7 +2,7 @@
 
 ## New Features
 
-（変更内容をここに記載）
+- `tm sync`: 同期ディレクトリをOSごとの標準的なアプリケーションデータ置き場（env-pathsの規則。Linux `~/.local/share/task-memory` / macOS `~/Library/Application Support/task-memory` / Windows `%LOCALAPPDATA%\task-memory\Data`）へ移行。旧パス `~/.local/task-memory` のデータは `tm sync` / `tm git` コマンドや自動同期の実行時に自動的に新パスへ移行され、移行記録が `<同期ディレクトリ>/.migrated-from` に残る。旧・新両方にデータがある場合は上書きせず警告 (#7レビュー指摘 / TASK-8)
 
 ## Bug Fixes
 

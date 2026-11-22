@@ -37,5 +37,8 @@
     "tsup": "^8",
     "typescript": "^5",
     "vitest": "^2"
+  },
+  "dependencies": {
+    "env-paths": "^4.0.0"
   }
 }

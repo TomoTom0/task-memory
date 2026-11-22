@@ -32,9 +32,11 @@ const TMP_ROOT = getSandboxWorkDir();
 
 // テストごとにsync repo領域を空に戻す（旧HOME差し替えブロックのafterEachが担っていた
 // 「各テストが未同期状態から始まる」シナリオ前提の構築。環境隔離はsetup.tsが担うまま。
-// homedir()はこの時点でsandbox HOMEを返すため掃除対象はsandbox配下に限られる）
+// homedir()はこの時点でsandbox HOMEを返すため掃除対象はsandbox配下に限られる。
+// TASK-8で同期ディレクトリがenv-paths解決になったため、旧パスと新パスの両方を掃除する）
 afterEach(() => {
     rmSync(join(homedir(), '.local', 'task-memory'), { recursive: true, force: true });
+    rmSync(getSyncDir(), { recursive: true, force: true });
 });
 
 function captureConsole(fn: () => void): { logs: string[]; errors: string[] } {

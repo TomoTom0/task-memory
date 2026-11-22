@@ -17,7 +17,7 @@
 | 経路 | 実装箇所 |
 |---|---|
 | `CODING_AGENT_ROOT` 優先の `.git` 解決 | `resolveGitPath()`（src/store.ts:47-54。src/reviewStore.ts も同一関数を利用） |
-| sync repo `~/.local/task-memory` | `getSyncDir()`（src/syncStore.ts:11-13） |
+| sync repo（env-paths data path。TASK-8後はLinux `~/.local/share/task-memory` 等）と旧パス `~/.local/task-memory` | `getSyncDir()` / `getLegacySyncDir()`（src/syncStore.ts） |
 | repo側DB（非globalモード） | `getDbPath()` / `getReviewDbPath()`（src/store.ts:56-73 / src/reviewStore.ts:7-24）。`.git` がディレクトリなら `<repo>/.git/task-memory.json` / `<repo>/.git/review-memory.json`、worktree等で `.git` が通常ファイルなら `<repo>/task-memory.json` / `<repo>/review-memory.json` |
 | globalモードの `~/.task-memory.json` / `~/.review-memory.json` | src/store.ts:56-59 / src/reviewStore.ts:9 |
 | save時の自動sync（`tryAutoSync`） | src/index.ts:21-23 の `setAfterSaveCallback` |
@@ -245,7 +245,8 @@ home側3点は固定、repo側2点は `<repo>/.git` の実体で分岐する（w
 
 | 分類 | label | path |
 |---|---|---|
-| home側（固定） | sync repo | `~/.local/task-memory` |
+| home側（固定） | sync repo | `~/.local/task-memory`（旧パス。TASK-8の移行元として監視継続） |
+| home側（固定） | sync repo (env-paths data dir) | env-paths解決のdata path（Linuxでは `~/.local/share/task-memory`） |
 | home側（固定） | global task DB | `~/.task-memory.json` |
 | home側（固定） | review memory | `~/.review-memory.json` |
 | repo側（`.git` がディレクトリ） | repo task DB / repo review DB | `<REPO_ROOT>/.git/task-memory.json` / `<REPO_ROOT>/.git/review-memory.json` |

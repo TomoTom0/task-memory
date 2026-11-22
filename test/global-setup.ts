@@ -3,6 +3,7 @@ import { appendFileSync, lstatSync, readdirSync, readFileSync, readlinkSync, sta
 import { homedir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import envPaths from 'env-paths';
 
 // 実データ不変guard（設計書: docs/design/test-isolation.md）。
 // globalSetupはvitestメインプロセス内の別global scope（setup.tsによる環境差し替えの
@@ -13,7 +14,8 @@ const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 type Target = { label: string; path: string };
 type Snapshot = { state: 'absent' } | { state: 'present'; hash: string; entries: number };
 
-// 監視対象5点。home側3点は固定、repo側2点は<repo>/.gitの実体（follow判定）で分岐する。
+// 監視対象6点。home側4点は固定（同期ディレクトリは現行のenv-paths data pathと
+// 移行元の旧パスの両方。TASK-8）、repo側2点は<repo>/.gitの実体（follow判定）で分岐する。
 // worktree等で.gitが通常ファイルの場合、DBはrepo root直下に作られるため
 // .git/配下固定の監視では検知漏れになる（本番コードのgetDbPath/getReviewDbPathと同じ挙動）
 function buildTargets(): Target[] {
@@ -21,6 +23,7 @@ function buildTargets(): Target[] {
     const repoDbDir = statSync(gitPath).isDirectory() ? gitPath : REPO_ROOT;
     return [
         { label: 'sync repo', path: join(homedir(), '.local', 'task-memory') },
+        { label: 'sync repo (env-paths data dir)', path: envPaths('task-memory', { suffix: '' }).data },
         { label: 'global task DB', path: join(homedir(), '.task-memory.json') },
         { label: 'review memory', path: join(homedir(), '.review-memory.json') },
         { label: 'repo task DB', path: join(repoDbDir, 'task-memory.json') },
