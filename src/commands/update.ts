@@ -1,4 +1,4 @@
-import { loadTasks, saveTasks, getTaskById, getCurrentCommit } from '../store';
+import { loadTasks, saveTasksWithOrder, getTaskById, getCurrentCommit } from '../store';
 import type { Task } from '../types';
 import { isTaskStatus, canTransition, blockedExitMessage, TASK_STATUSES } from '../utils/statusGuard';
 import { isValidOrderFormat } from '../utils/orderUtils';
@@ -286,7 +286,7 @@ Options:
     }
 
     if (updated) {
-        saveTasks(tasks, orderSetSequence);
+        saveTasksWithOrder(tasks, orderSetSequence);
         console.log('Tasks updated.');
     }
 }

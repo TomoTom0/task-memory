@@ -1,4 +1,4 @@
-import { loadTasks, saveTasks, getNextId } from '../store';
+import { loadTasks, saveTasksWithOrder, getNextId } from '../store';
 import { parseTaskArgs, buildTask } from '../utils/taskBuilder';
 
 export function newCommand(args: string[]): void {
@@ -36,7 +36,7 @@ Options:
     const newTask = buildTask(id, options);
 
     tasks.push(newTask);
-    saveTasks(tasks, [id]);
+    saveTasksWithOrder(tasks, [id]);
 
     console.log(`${id} ${options.summary}`);
 }
