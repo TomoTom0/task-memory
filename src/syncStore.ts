@@ -122,7 +122,10 @@ export function moveDirectory(from: string, to: string): void {
 // EXDEV fallbackの実体（XDG_DATA_HOME等で別ファイルシステムを指した場合の経路）。
 // copyが完了してから旧dirを削除する
 export function copyDirThenRemove(from: string, to: string): void {
-    cpSync(from, to, { recursive: true });
+    // verbatimSymlinks: symlinkのリンクテキストをそのまま保持する。既定の挙動では
+    // 相対symlinkのターゲットが旧dir内の絶対パスへ解決されて書き換わるため、旧dirを
+    // 削除した時点でリンクが切れる（PR #49レビュー指摘）
+    cpSync(from, to, { recursive: true, verbatimSymlinks: true });
     rmSync(from, { recursive: true, force: true });
 }
 

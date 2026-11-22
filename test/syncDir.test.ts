@@ -15,7 +15,7 @@ import { gitCommand } from '../src/commands/git';
 import type { TaskStore } from '../src/types';
 import { join, dirname, sep } from 'path';
 import { homedir } from 'os';
-import { existsSync, mkdirSync, rmSync, mkdtempSync, writeFileSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, rmSync, mkdtempSync, writeFileSync, readFileSync, symlinkSync, readlinkSync } from 'fs';
 import { spawnSync } from 'child_process';
 import { randomUUID } from 'crypto';
 import { getSandboxWorkDir } from './helpers';
@@ -292,6 +292,24 @@ describe('旧同期ディレクトリ移行の実行', () => {
         expect(readFileSync(join(dst, 'projects', 'deep', 'nested.json'), 'utf-8')).toBe('{"tasks":[]}');
         expect(existsSync(src)).toBe(false);
     });
+
+    // WindowsはsymlinkSyncに特権（Developer Mode/管理者）が必要なためskip
+    it.skipIf(process.platform === 'win32')(
+        'copyDirThenRemoveは相対symlinkのリンクテキストを保持し、旧dir削除後も実体を指し続ける [covers:syncdir-migration.copy-fallback-symlink]',
+        () => {
+            const src = mkdtempSync(join(TMP_ROOT, 'move-symlink-src-'));
+            writeFilesAt(src, { 'projects/real.json': '{"tasks":[]}' });
+            symlinkSync('real.json', join(src, 'projects', 'alias.json'));
+            const dst = join(TMP_ROOT, `move-symlink-dst-${randomUUID().slice(0, 8)}`);
+
+            copyDirThenRemove(src, dst);
+            // リンクテキストが相対のまま保持される（旧dir内の絶対パスへ書き換わらない）
+            expect(readlinkSync(join(dst, 'projects', 'alias.json'))).toBe('real.json');
+            // 旧dir削除後もリンクは実体を指し続ける（danglingにならない）
+            expect(existsSync(src)).toBe(false);
+            expect(readFileSync(join(dst, 'projects', 'alias.json'), 'utf-8')).toBe('{"tasks":[]}');
+        }
+    );
 });
 
 // --- 移行の発火地点 ---
