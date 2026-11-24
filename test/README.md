@@ -25,7 +25,7 @@ vitestで実行する（`pnpm test`）。ファイルは `test/*.test.ts` にフ
 | `statusGuard.test.ts` | `statusGuard` |
 | `store.test.ts` | `saveTasks` / `saveTasksWithOrder` のorder重複解消 |
 | `sync.test.ts` | `syncStore` / `syncCommand`（`tm sync` サブコマンド群） |
-| `syncDir.test.ts` | 同期ディレクトリのパス決定（env-paths）と旧パスからの移行（TASK-8。OS判定はenv-paths mock注入と`XDG_DATA_HOME`切替で検証） |
+| `syncDir.test.ts` | 同期ディレクトリのパス決定（env-paths）と旧パスからの移行（TASK-8。OS判定はenv-paths mock注入と`XDG_DATA_HOME`切替で検証）。移行時の相対remote URL・insteadOfエイリアス・相対symlinkの保持（PR#52/#53/#49レビュー対応、条件書はTASK-23） |
 | `update.test.ts` | `tm update` の引数パース、blocked/gate |
 | `global-setup.ts` | 実データ不変guard（globalSetup/teardown。run前後で監視対象6点のhash比較） |
 | `helpers.ts` | sandbox配下生成のシナリオ構築（createTempProject / getSandboxWorkDir / removeTempDir） |
