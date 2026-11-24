@@ -178,14 +178,24 @@ function preserveRelativeRemoteUrls(from: string, to: string): void {
     if (remotes.status !== 0) return;
     for (const remote of remotes.stdout.split('\n').map(s => s.trim()).filter(s => s.length > 0)) {
         // pushurlは明示設定されている場合のみ対象にする（get-url --pushは
-        // 未設定時にfetch URLを返すため、configを直接読んで区別する）
-        const entries: { push: boolean; url: string }[] = [];
+        // 未設定時にfetch URLを返すため、configを直接読んで区別する）。
+        // expandedはinsteadOf展開後の実効URL。rawと異なる場合はinsteadOfの
+        // エイリアスであり場所に依存しないため、相対パスに見えても対象外
+        // （PR #53レビュー指摘）
+        const entries: { push: boolean; url: string; expanded: string | null }[] = [];
         const fetch = gitIn(to, ['config', '--get', `remote.${remote}.url`]);
-        if (fetch.status === 0) entries.push({ push: false, url: fetch.stdout.trim() });
+        if (fetch.status === 0) {
+            const expanded = gitIn(to, ['remote', 'get-url', remote]);
+            entries.push({ push: false, url: fetch.stdout.trim(), expanded: expanded.status === 0 ? expanded.stdout.trim() : null });
+        }
         const pushUrl = gitIn(to, ['config', '--get', `remote.${remote}.pushurl`]);
-        if (pushUrl.status === 0) entries.push({ push: true, url: pushUrl.stdout.trim() });
+        if (pushUrl.status === 0) {
+            const expanded = gitIn(to, ['remote', 'get-url', '--push', remote]);
+            entries.push({ push: true, url: pushUrl.stdout.trim(), expanded: expanded.status === 0 ? expanded.stdout.trim() : null });
+        }
         for (const entry of entries) {
             if (!isRelativeLocalPathUrl(entry.url)) continue;
+            if (entry.expanded === null || entry.expanded !== entry.url) continue;
             const absolute = resolve(from, entry.url);
             const setArgs = entry.push
                 ? ['remote', 'set-url', '--push', remote, absolute]
