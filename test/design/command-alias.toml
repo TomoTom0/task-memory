@@ -1,0 +1,34 @@
+# 経緯・詳細: TASK-21「tm new のエイリアス tm n を実装する (README記載の未実装分)」
+# 出典: README.md Usage Create a Task 節のエイリアス表記 (`tm n` (not yet impl)) と TASK-21 のgoal
+# テスト先行作成時点では [meta].verified を false としていた。
+# 実装完了 (2026-11-24) 後、全件テスト 316/316 緑、verify-conditions.py の
+# command-alias 由来の検査 (schema・網羅・dangling・source_lines同期) は全項目PASS を
+# 確認したため true へ計上した (script全体のexit 1はPR#53由来のsyncdir-migration
+# dangling tag 3件であり本機能と無関係・別タスク化済み)。
+[meta]
+feature = "command-alias"
+source_file = "src/index.ts"
+verified = true
+verified_at = "2026-11-24"
+verified_by = "claude"
+test_command = "pnpm vitest run test/dispatch.test.ts"
+source_hash = "7ed088c92cf43878b6fd4414eee6501364f13f0b (sha1sum src/index.ts 実装時点の参考値)"
+note = "条件はTASK-21のgoal（tm n が tm new と同一に動作し dispatch テストで検証され README/help の未実装表記が消える）を出典として作成"
+
+[[condition]]
+id = "command-alias.n-routes-to-new"
+target_function = "dispatch"
+source = "README.md Usage Create a Task 節のエイリアス表記 (`tm n` (not yet impl)) と TASK-21 のgoal"
+source_lines = "test/dispatch.test.ts:94"
+description = "tm n <summary> [options] が tm new と同一に振り分けられる（dispatch の case 'n' が newCommand へ fallthrough し引数を無加工で渡す）"
+given = "空のプロジェクトで dispatch('n', ['Alias', 'Task', '--status', 'wip'])"
+expect_return_shape = "loadTasks() にタスク1件が作成される（summary 'Alias Task'・status 'wip'）。'Unknown command' エラー・process.exit が起きない"
+
+[[condition]]
+id = "command-alias.help-new-notation"
+target_function = "getHelpText"
+source = "src/index.ts getHelpText のエイリアス持ちコマンド行の表記様式（list (ls, l) など）"
+source_lines = "test/dispatch.test.ts:45"
+description = "トップレベルヘルプの new 行がエイリアス n を他コマンドと同じ括弧書きで示す"
+given = "getHelpText() を呼ぶ"
+expect_return_shape = "戻り値の文字列に 'new (n) <summary> [options]' を含む"

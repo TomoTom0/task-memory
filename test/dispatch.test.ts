@@ -41,6 +41,10 @@ describe('tm index routing', () => {
             expect(help).toContain('--force');
             expect(help).toContain('blocked');
         });
+
+        it('documents the "n" alias for new [covers:command-alias.help-new-notation]', () => {
+            expect(getHelpText()).toContain('new (n) <summary> [options]');
+        });
     });
 
     describe('dispatch routing', () => {
@@ -85,6 +89,14 @@ describe('tm index routing', () => {
             dispatch(undefined, []);
             expect(log).toHaveBeenCalled();
             log.mockRestore();
+        });
+
+        it('routes "n" to newCommand [covers:command-alias.n-routes-to-new]', () => {
+            dispatch('n', ['Alias', 'Task', '--status', 'wip']);
+            const t = loadTasks();
+            expect(t.length).toBe(1);
+            expect(t[0]!.summary).toBe('Alias Task');
+            expect(t[0]!.status).toBe('wip');
         });
     });
 });
