@@ -86,6 +86,6 @@ env操作・os mock）を書かない**。sandbox構造・各設定の理由は 
 
 ```bash
 pnpm test                                    # 全テスト
-pnpm test -- test/sync.test.ts               # 単一ファイル
+pnpm vitest run test/sync.test.ts            # 単一ファイル
 python3 scripts/design/verify-conditions.py  # 条件書の機械検証
 ```
