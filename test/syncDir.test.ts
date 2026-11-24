@@ -210,6 +210,62 @@ describe('旧同期ディレクトリ移行の実行', () => {
         expect(exclude.split('\n')).toContain('.migrated-from');
     });
 
+    it('相対パスのremote URLは移行時に旧dir基準の絶対パスへ解決して保持する [covers:syncdir-migration.relative-remote-url]', () => {
+        const legacy = createLegacyFiles({ 'config.json': '{"defaultAuto":false}' });
+        expect(spawnSync('git', ['init', legacy]).status).toBe(0);
+        // 旧dirから ../remote.git の位置にbare repoを作り、相対パスでorigin登録する
+        const remotePath = join(dirname(legacy), 'remote.git');
+        expect(spawnSync('git', ['init', '--bare', remotePath]).status).toBe(0);
+        expect(spawnSync('git', ['-C', legacy, 'remote', 'add', 'origin', '../remote.git']).status).toBe(0);
+        // 絶対パス・URLのremoteは移行の影響を受けないこともあわせて固定する
+        expect(spawnSync('git', ['-C', legacy, 'remote', 'add', 'abs', remotePath]).status).toBe(0);
+        expect(spawnSync('git', ['-C', legacy, 'remote', 'add', 'web', 'https://example.com/x.git']).status).toBe(0);
+        try {
+            // 移行前は相対パスでも到達できる
+            expect(spawnSync('git', ['-C', legacy, 'ls-remote', 'origin']).status).toBe(0);
+            const target = getSyncDir();
+            captureConsole(() => {
+                expect(migrateLegacySyncDir()).toEqual({ kind: 'migrated', from: legacy, to: target });
+            });
+            // 相対パスは旧dir基準の絶対パスへ書き換わり、移行後も到達できる
+            const got = spawnSync('git', ['-C', target, 'remote', 'get-url', 'origin'], { encoding: 'utf-8' });
+            expect(got.stdout.trim()).toBe(remotePath);
+            expect(spawnSync('git', ['-C', target, 'ls-remote', 'origin']).status).toBe(0);
+            // 絶対パス・URLはそのまま
+            const gotAbs = spawnSync('git', ['-C', target, 'remote', 'get-url', 'abs'], { encoding: 'utf-8' });
+            expect(gotAbs.stdout.trim()).toBe(remotePath);
+            const gotWeb = spawnSync('git', ['-C', target, 'remote', 'get-url', 'web'], { encoding: 'utf-8' });
+            expect(gotWeb.stdout.trim()).toBe('https://example.com/x.git');
+        } finally {
+            rmSync(remotePath, { recursive: true, force: true });
+        }
+    });
+
+    it('insteadOfのエイリアスは相対パスに見えても書き換えない [covers:syncdir-migration.insteadof-alias]', () => {
+        const legacy = createLegacyFiles({ 'config.json': '{"defaultAuto":false}' });
+        expect(spawnSync('git', ['init', legacy]).status).toBe(0);
+        const remotePath = join(dirname(legacy), 'remote.git');
+        expect(spawnSync('git', ['init', '--bare', remotePath]).status).toBe(0);
+        // originは gh/ エイリアスで、insteadOfが実在パスへ展開する（場所に依存しない）
+        expect(spawnSync('git', ['-C', legacy, 'remote', 'add', 'origin', 'gh/remote.git']).status).toBe(0);
+        expect(spawnSync('git', ['-C', legacy, 'config', `url.${dirname(legacy)}/.insteadOf`, 'gh/']).status).toBe(0);
+        try {
+            expect(spawnSync('git', ['-C', legacy, 'ls-remote', 'origin']).status).toBe(0);
+            const target = getSyncDir();
+            captureConsole(() => {
+                expect(migrateLegacySyncDir()).toEqual({ kind: 'migrated', from: legacy, to: target });
+            });
+            // raw URLは書き換わらず、移行後もinsteadOf経由で到達できる
+            const got = spawnSync('git', ['-C', target, 'remote', 'get-url', 'origin'], { encoding: 'utf-8' });
+            expect(got.stdout.trim()).toBe(remotePath);
+            const raw = spawnSync('git', ['-C', target, 'config', '--get', 'remote.origin.url'], { encoding: 'utf-8' });
+            expect(raw.stdout.trim()).toBe('gh/remote.git');
+            expect(spawnSync('git', ['-C', target, 'ls-remote', 'origin']).status).toBe(0);
+        } finally {
+            rmSync(remotePath, { recursive: true, force: true });
+        }
+    });
+
     it('移行済みの状態での再実行は何もしない（二重移行の防止） [covers:syncdir-migration.idempotent]', () => {
         createLegacyFiles({ 'config.json': '{"defaultAuto":false}' });
         const target = getSyncDir();

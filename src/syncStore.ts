@@ -148,6 +148,65 @@ function writeMigrationMarker(record: SyncDirMigrationRecord): void {
 // （tryAutoSync）の入口で呼ばれる。移行済み（旧dirが無い）なら何もしないため、
 // 何度呼んも安全（二重移行が起きない）。旧dir・新dirの両方にデータがある場合は
 // 既存の新パスデータの上書き事故を防ぐため移行せず、手動解決を促す警告のみ出す
+// 相対パスで書かれたremote URLはrepoの場所を基準に解決されるため、同期
+// ディレクトリを移動すると接続先が変わってしまう（PR #52レビュー指摘）。
+// scheme付きURL・絶対パス・scp形式（host:path）は場所に依存しないので対象外
+export function isRelativeLocalPathUrl(url: string): boolean {
+    if (url.length === 0) return false;
+    if (url.startsWith('/') || url.startsWith('~')) return false;
+    // Windows絶対パス (C:\... / C:/...)
+    if (/^[a-zA-Z]:[\\/]/.test(url)) return false;
+    if (url.includes('://')) return false;
+    // scp形式や host:path は最初の '/' より前に ':' がある
+    const colon = url.indexOf(':');
+    const slash = url.indexOf('/');
+    if (colon !== -1 && (slash === -1 || colon < slash)) return false;
+    return true;
+}
+
+function gitIn(dir: string, args: string[]): { status: number; stdout: string } {
+    const result = spawnSync('git', ['-C', dir, ...args], { encoding: 'utf-8', stdio: 'pipe' });
+    return { status: result.status ?? 1, stdout: result.stdout ?? '' };
+}
+
+// 移行でrepoの場所が変わるため、相対パスで設定されたremote URLを旧dir基準の
+// 絶対パスへ書き換えて接続先を保持する。書き換えに失敗しても移行自体は成立
+// しているため、markerと同じく警告に留める
+function preserveRelativeRemoteUrls(from: string, to: string): void {
+    if (!existsSync(join(to, '.git'))) return;
+    const remotes = gitIn(to, ['remote']);
+    if (remotes.status !== 0) return;
+    for (const remote of remotes.stdout.split('\n').map(s => s.trim()).filter(s => s.length > 0)) {
+        // pushurlは明示設定されている場合のみ対象にする（get-url --pushは
+        // 未設定時にfetch URLを返すため、configを直接読んで区別する）。
+        // expandedはinsteadOf展開後の実効URL。rawと異なる場合はinsteadOfの
+        // エイリアスであり場所に依存しないため、相対パスに見えても対象外
+        // （PR #53レビュー指摘）
+        const entries: { push: boolean; url: string; expanded: string | null }[] = [];
+        const fetch = gitIn(to, ['config', '--get', `remote.${remote}.url`]);
+        if (fetch.status === 0) {
+            const expanded = gitIn(to, ['remote', 'get-url', remote]);
+            entries.push({ push: false, url: fetch.stdout.trim(), expanded: expanded.status === 0 ? expanded.stdout.trim() : null });
+        }
+        const pushUrl = gitIn(to, ['config', '--get', `remote.${remote}.pushurl`]);
+        if (pushUrl.status === 0) {
+            const expanded = gitIn(to, ['remote', 'get-url', '--push', remote]);
+            entries.push({ push: true, url: pushUrl.stdout.trim(), expanded: expanded.status === 0 ? expanded.stdout.trim() : null });
+        }
+        for (const entry of entries) {
+            if (!isRelativeLocalPathUrl(entry.url)) continue;
+            if (entry.expanded === null || entry.expanded !== entry.url) continue;
+            const absolute = resolve(from, entry.url);
+            const setArgs = entry.push
+                ? ['remote', 'set-url', '--push', remote, absolute]
+                : ['remote', 'set-url', remote, absolute];
+            if (gitIn(to, setArgs).status !== 0) {
+                console.error(`Warning: could not preserve relative remote URL for "${remote}": ${entry.url}`);
+            }
+        }
+    }
+}
+
 export function migrateLegacySyncDir(): LegacySyncDirMigrationResult {
     const from = getLegacySyncDir();
     const to = getSyncDir();
@@ -180,6 +239,7 @@ export function migrateLegacySyncDir(): LegacySyncDirMigrationResult {
         console.error(`Warning: failed to migrate sync directory from ${from} to ${to}: ${e}`);
         return { kind: 'failed', from, to, error: String(e) };
     }
+    preserveRelativeRemoteUrls(from, to);
     writeMigrationMarker({ from, to, migratedAt: new Date().toISOString() });
     console.log(`Migrated sync data directory: ${from} -> ${to}`);
     return { kind: 'migrated', from, to };
