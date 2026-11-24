@@ -280,6 +280,28 @@ describe('旧同期ディレクトリ移行の実行', () => {
         }
     });
 
+    it('scp形式・~始まりのremote URLは場所に依存しないため書き換えない [covers:syncdir-migration.relative-remote-url]', () => {
+        const legacy = createLegacyFiles({ 'config.json': '{"defaultAuto":false}' });
+        expect(spawnSync('git', ['init', legacy]).status).toBe(0);
+        // scp形式（host:path）: 最初の '/' より前に ':' があるため相対パスではない。
+        // '/' を含まない host:path も同じ分岐（slash === -1）で除外される
+        expect(spawnSync('git', ['-C', legacy, 'remote', 'add', 'scp', 'git@example.com:user/repo.git']).status).toBe(0);
+        expect(spawnSync('git', ['-C', legacy, 'remote', 'add', 'hostpath', 'example.com:repo.git']).status).toBe(0);
+        // ~始まりはホーム基準で解決されるため、repoの場所には依存しない
+        expect(spawnSync('git', ['-C', legacy, 'remote', 'add', 'tilde', '~/remote.git']).status).toBe(0);
+        const target = getSyncDir();
+        captureConsole(() => {
+            expect(migrateLegacySyncDir()).toEqual({ kind: 'migrated', from: legacy, to: target });
+        });
+        // raw値（config --get）が入力のまま書き換わっていないこと
+        const scp = spawnSync('git', ['-C', target, 'config', '--get', 'remote.scp.url'], { encoding: 'utf-8' });
+        expect(scp.stdout.trim()).toBe('git@example.com:user/repo.git');
+        const hostpath = spawnSync('git', ['-C', target, 'config', '--get', 'remote.hostpath.url'], { encoding: 'utf-8' });
+        expect(hostpath.stdout.trim()).toBe('example.com:repo.git');
+        const tilde = spawnSync('git', ['-C', target, 'config', '--get', 'remote.tilde.url'], { encoding: 'utf-8' });
+        expect(tilde.stdout.trim()).toBe('~/remote.git');
+    });
+
     it('移行済みの状態での再実行は何もしない（二重移行の防止） [covers:syncdir-migration.idempotent]', () => {
         createLegacyFiles({ 'config.json': '{"defaultAuto":false}' });
         const target = getSyncDir();

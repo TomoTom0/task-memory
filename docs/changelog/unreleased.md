@@ -28,6 +28,8 @@
 
 - PR #49 / PR #53 由来の syncDir 回帰テスト3件（相対remote URL保持・insteadOfエイリアス不変・相対symlink保持）の `[covers:]` タグに対応する条件を `test/design/cross-platform-sync-dir.toml` へ追加し、verify-conditions.py の dangling tag (FAIL 3件) を解消。あわせて相対remote URL保持テストへ明示 pushurl の書き換えケースを追加 (TASK-23)
 
+- `isRelativeLocalPathUrl` の scp形式（host:path）・~始まり除外分岐を `test/design/cross-platform-sync-dir.toml` の relative-remote-url 条件へ追加し、移行時に書き換えないことを検証するテストを `test/syncDir.test.ts` へ追加 (TASK-25)
+
 ## Known Issues
 
 （変更内容をここに記載）
