@@ -223,6 +223,11 @@ describe('旧同期ディレクトリ移行の実行', () => {
         try {
             // 移行前は相対パスでも到達できる
             expect(spawnSync('git', ['-C', legacy, 'ls-remote', 'origin']).status).toBe(0);
+            // 明示pushurlも保持対象: fetch URLは絶対パス・pushurlのみ相対パスのremoteと、
+            // 非相対（https://）のpushurlを持つremoteを追加する
+            expect(spawnSync('git', ['-C', legacy, 'remote', 'add', 'pushy', remotePath]).status).toBe(0);
+            expect(spawnSync('git', ['-C', legacy, 'remote', 'set-url', '--push', 'pushy', '../remote.git']).status).toBe(0);
+            expect(spawnSync('git', ['-C', legacy, 'remote', 'set-url', '--push', 'web', 'https://example.com/push.git']).status).toBe(0);
             const target = getSyncDir();
             captureConsole(() => {
                 expect(migrateLegacySyncDir()).toEqual({ kind: 'migrated', from: legacy, to: target });
@@ -236,6 +241,15 @@ describe('旧同期ディレクトリ移行の実行', () => {
             expect(gotAbs.stdout.trim()).toBe(remotePath);
             const gotWeb = spawnSync('git', ['-C', target, 'remote', 'get-url', 'web'], { encoding: 'utf-8' });
             expect(gotWeb.stdout.trim()).toBe('https://example.com/x.git');
+            // 相対パスの明示pushurlは絶対パスへ書き換わり、fetch URL（絶対パス）はそのまま。
+            // raw値のassertにはconfig --getを使う（get-urlはinsteadOf展開値を返すため）
+            const pushyPush = spawnSync('git', ['-C', target, 'config', '--get', 'remote.pushy.pushurl'], { encoding: 'utf-8' });
+            expect(pushyPush.stdout.trim()).toBe(remotePath);
+            const pushyFetch = spawnSync('git', ['-C', target, 'config', '--get', 'remote.pushy.url'], { encoding: 'utf-8' });
+            expect(pushyFetch.stdout.trim()).toBe(remotePath);
+            // 非相対のpushurlは書き換え対象外
+            const webPush = spawnSync('git', ['-C', target, 'config', '--get', 'remote.web.pushurl'], { encoding: 'utf-8' });
+            expect(webPush.stdout.trim()).toBe('https://example.com/push.git');
         } finally {
             rmSync(remotePath, { recursive: true, force: true });
         }
