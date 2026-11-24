@@ -34,7 +34,7 @@ Global options:
   --global, -G             Use home directory for storage (for non-git environments)
 
 Commands:
-  new <summary> [options]
+  new (n) <summary> [options]
     Create a new task.
     Options:
       --status, -s <status>    Set initial status (todo, wip, done, pending, long, blocked, closed)
@@ -126,6 +126,7 @@ Examples:
 export function dispatch(command: string | undefined, commandArgs: string[]): void {
     switch (command) {
         case 'new':
+        case 'n':
             newCommand(commandArgs);
             break;
         case 'list':

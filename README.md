@@ -31,7 +31,7 @@ pnpm link --global
 ```bash
 tm new "Refactor auth" --status wip --body "Starting now" --priority high --goal "Complete by Friday"
 ```
-Aliases: `tm n` (not yet impl), `tm new`
+Aliases: `tm n`
 
 ### List Tasks
 ```bash

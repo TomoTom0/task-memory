@@ -76,7 +76,8 @@ env操作・os mock）を書かない**。sandbox構造・各設定の理由は 
 - **test-structure管理下**: `sync-setup`機能（`test/design/sync-setup.toml`、対応実装は
   `src/syncStore.ts` / `src/commands/sync.ts`。TASK-12で導入）と
   `cross-platform-sync-dir`機能（`test/design/cross-platform-sync-dir.toml`、対応実装は
-  `src/syncStore.ts` / `src/commands/sync.ts` / `src/commands/git.ts`。TASK-8で導入）
+  `src/syncStore.ts` / `src/commands/sync.ts` / `src/commands/git.ts`。TASK-8で導入）と
+  `command-alias`機能（`test/design/command-alias.toml`、対応実装は `src/index.ts`。TASK-21で導入）
 - **未移行**: 上記一覧の他のテストファイルはこの仕組みの対象外（bootstrap未実施）。既存テストからの
   移行はskill §7の手順（`--bootstrap`オプションでの土台抽出→要件起点での書き直し）に従う別タスクで
   行う
