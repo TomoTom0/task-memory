@@ -1,6 +1,9 @@
-import { runGitCommand, isSyncInitialized, getSyncDir } from '../syncStore';
+import { runGitCommand, isSyncInitialized, getSyncDir, migrateLegacySyncDir } from '../syncStore';
 
 export function gitCommand(args: string[]): void {
+    // 旧同期ディレクトリ（~/.local/task-memory）からの移行を先に行う（TASK-8）
+    migrateLegacySyncDir();
+
     if (!isSyncInitialized()) {
         console.error('Sync repository not initialized. Run "tm sync add" first.');
         process.exit(1);

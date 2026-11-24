@@ -283,7 +283,7 @@ tm env
 
 ### 10. 同期リポジトリでのGit操作 (`tm git`)
 
-`~/.local/task-memory/` リポジトリでGitコマンドを実行します。
+同期用データディレクトリ（OSごとの標準的なアプリケーションデータ置き場。パスは `tm sync status` で確認できます）のリポジトリでGitコマンドを実行します。
 
 ```bash
 tm git log --oneline -5
@@ -312,7 +312,15 @@ tm -G new "タスク"
 
 ## 同期 (`tm sync`)
 
-`~/.local/task-memory/` リポジトリ経由でタスクデータを管理・共有します。
+同期用データディレクトリのリポジトリ経由でタスクデータを管理・共有します。
+
+同期用データディレクトリはOSごとの標準的なアプリケーションデータ置き場（[env-paths](https://github.com/sindresorhus/env-paths)の規則）に配置されます:
+
+- Linux: `$XDG_DATA_HOME/task-memory`（未設定時は `~/.local/share/task-memory`）
+- macOS: `~/Library/Application Support/task-memory`
+- Windows: `%LOCALAPPDATA%\task-memory\Data`
+
+実際のパスは `tm sync status` で確認できます。v0.6.0以前の `~/.local/task-memory` にデータがある場合、`tm sync` / `tm git` コマンドや自動同期の実行時に新しいディレクトリへ自動的に移行され、移行元の情報が `<同期ディレクトリ>/.migrated-from` に記録されます。
 
 ### 初回セットアップ
 

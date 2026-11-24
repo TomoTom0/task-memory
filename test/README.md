@@ -20,13 +20,14 @@ vitestで実行する（`pnpm test`）。ファイルは `test/*.test.ts` にフ
 | `index.test.ts` | `isMainEntry`（symlink-aware direct invocation check）、`getHelpText` |
 | `list.test.ts` | `tm list` |
 | `new.test.ts` | `tm new` の引数パース |
-| `orderUtils.test.ts` | `parseOrder` / `isValidOrderFormat` / `formatOrder` |
+| `orderUtils.test.ts` | `parseOrder` / `formatOrder` / `compareOrders` / `isValidOrderFormat` / `normalizeOrders`（order重複の優先度込み解消を含む） / `sortByOrder` |
 | `review.test.ts` | `tm review` |
 | `statusGuard.test.ts` | `statusGuard` |
-| `store.test.ts` | `saveTasks` のorder重複解消 |
+| `store.test.ts` | `saveTasks` / `saveTasksWithOrder` のorder重複解消 |
 | `sync.test.ts` | `syncStore` / `syncCommand`（`tm sync` サブコマンド群） |
+| `syncDir.test.ts` | 同期ディレクトリのパス決定（env-paths）と旧パスからの移行（TASK-8。OS判定はenv-paths mock注入と`XDG_DATA_HOME`切替で検証） |
 | `update.test.ts` | `tm update` の引数パース、blocked/gate |
-| `global-setup.ts` | 実データ不変guard（globalSetup/teardown。run前後で監視対象5点のhash比較） |
+| `global-setup.ts` | 実データ不変guard（globalSetup/teardown。run前後で監視対象6点のhash比較） |
 | `helpers.ts` | sandbox配下生成のシナリオ構築（createTempProject / getSandboxWorkDir / removeTempDir） |
 | `setup.ts` | テスト隔離基盤（sandbox構築。全テストファイルのHOME・cwd差し替え） |
 
@@ -38,9 +39,13 @@ env操作・os mock）を書かない**。sandbox構造・各設定の理由は 
 を参照する。
 
 - 全テストファイルのHOME・cwdは `/tmp/tm-test-sandbox-*` 配下に限定され、実データ
-  （repo側DB 2点・home側 3点）へは到達しない。sandboxはworker終了時（SIGTERM handler）
+  （repo側DB 2点・home側 4点）へは到達しない。sandboxはworker終了時（SIGTERM handler）
   に自己削除される
-- 実データguard（`test/global-setup.ts`）がrun前後で監視対象5点（repo側2点+home側3点）の
+- `vitest.config.ts`の`exclude`で`tmp/`（スクラッチ領域）をテスト探索対象外にしている。
+  作業ログ・採取物・他ユーザー由来の権限なし残留dirなど、テストと無関係なファイルによる
+  glob走査の失敗を防ぐため（defaultのexcludeは指定で置換されるため`node_modules`等は再掲）
+- 実データguard（`test/global-setup.ts`）がrun前後で監視対象6点（repo側2点+home側4点:
+  同期ディレクトリはenv-paths data pathと旧パス`~/.local/task-memory`の両方）の
   存在+内容hashを比較し、不一致ならrunをexit code 1で失敗させる（常設）
 - **前提崩しオプションの注意**: `--no-isolate`、`--pool=threads`、`--singleFork`、
   `--no-file-parallelism` 等のfork/isolate前提を崩すCLI上書きは、sandboxの前提
@@ -68,8 +73,10 @@ env操作・os mock）を書かない**。sandbox構造・各設定の理由は 
 
 ### 現状の適用範囲
 
-- **test-structure管理下**: `sync-setup`機能のみ（`test/design/sync-setup.toml`、対応実装は
-  `src/syncStore.ts` / `src/commands/sync.ts`。TASK-12で導入）
+- **test-structure管理下**: `sync-setup`機能（`test/design/sync-setup.toml`、対応実装は
+  `src/syncStore.ts` / `src/commands/sync.ts`。TASK-12で導入）と
+  `cross-platform-sync-dir`機能（`test/design/cross-platform-sync-dir.toml`、対応実装は
+  `src/syncStore.ts` / `src/commands/sync.ts` / `src/commands/git.ts`。TASK-8で導入）
 - **未移行**: 上記一覧の他のテストファイルはこの仕組みの対象外（bootstrap未実施）。既存テストからの
   移行はskill §7の手順（`--bootstrap`オプションでの土台抽出→要件起点での書き直し）に従う別タスクで
   行う

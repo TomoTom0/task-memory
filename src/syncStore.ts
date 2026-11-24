@@ -1,15 +1,248 @@
 import { join, basename, dirname, resolve, sep } from 'path';
 import { homedir, tmpdir } from 'os';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, renameSync, mkdtempSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, renameSync, mkdtempSync, rmSync, cpSync, statSync } from 'fs';
 import { spawnSync } from 'child_process';
+import envPaths from 'env-paths';
 import type { TaskStore, SyncConfig } from './types';
 
 export interface SyncGlobalConfig {
     defaultAuto: boolean;
 }
 
+// 同期ディレクトリのクロスプラットフォーム対応（TASK-8）。
+// env-pathsはOSごとの標準的なアプリケーションデータ置き場を返す:
+//   Linux:   $XDG_DATA_HOME/task-memory または ~/.local/share/task-memory
+//   macOS:   ~/Library/Application Support/task-memory
+//   Windows: %LOCALAPPDATA%\task-memory\Data
+// suffixを空にしないとディレクトリ名が task-memory-nodejs になるため明示的に無効化する
+// （設計: docs/dev/feature/cross-platform-sync-dir.md）。旧パス（getLegacySyncDir）に
+// あるデータは migrateLegacySyncDir が新パスへ自動移行する。
+const SYNC_APP_NAME = 'task-memory';
+
 export function getSyncDir(): string {
+    return envPaths(SYNC_APP_NAME, { suffix: '' }).data;
+}
+
+// v0.6.0以前の同期ディレクトリ。.local はLinux慣習だが全OSで使っていた。
+// 移行の入力側としてのみ参照される
+export function getLegacySyncDir(): string {
     return join(homedir(), '.local', 'task-memory');
+}
+
+// --- 旧同期ディレクトリからの移行 ---
+
+// ディレクトリ内にtmが管理するデータ（git repo・projectデータ・グローバル設定）が
+// あるか。いずれも無いdirは「tmのデータ」とみなさず、移行・衝突判定の対象にしない
+export function hasSyncData(dir: string): boolean {
+    return existsSync(join(dir, '.git')) || existsSync(join(dir, 'projects')) || existsSync(join(dir, 'config.json'));
+}
+
+function isDirectoryPath(p: string): boolean {
+    try {
+        return statSync(p).isDirectory();
+    } catch {
+        return false;
+    }
+}
+
+// dirの状態。ファイル等の「dirとして読めないpath」は非空扱い（対象を誤って消去・
+// 上書きしない側に倒す）
+export type DirectoryState = 'absent' | 'empty' | 'non-empty';
+
+export function getDirectoryState(dir: string): DirectoryState {
+    if (!existsSync(dir)) return 'absent';
+    try {
+        return readdirSync(dir).length === 0 ? 'empty' : 'non-empty';
+    } catch {
+        return 'non-empty';
+    }
+}
+
+// migrateLegacySyncDirの判定入力。OS判定（パスの決定）はenv-paths側に委譲して
+// あるため、ここはパス文字列の組合せだけで決まる純粋な状態
+export interface LegacySyncDirPresence {
+    legacyExists: boolean;
+    legacyHasData: boolean;
+    targetState: DirectoryState;
+}
+
+export type LegacySyncDirMigrationAction =
+    | { action: 'none'; reason: 'legacy-absent' | 'legacy-no-data' }
+    | { action: 'move'; clearEmptyTarget: boolean }
+    | { action: 'conflict' };
+
+// 旧dirと新dirの状態から移行のアクションを決める純粋関数（前提: 両パスは異なる。
+// 同一パスの判定は呼び出し側が行う）:
+//   - 旧dirが無い: 何もしない（新規ユーザー・移行済み）
+//   - 新dirが無い/空dir: 旧dirを新dirへmove（空dirはtmのデータではありえないため除去）
+//   - 新dirが非存在以外で旧dirにtmのデータが無い: 何もしない（旧dirは無視、新dir優勢）
+//   - 両dirにデータがある: 上書き事故を防ぐため移行せず衝突として警告
+export function decideLegacySyncDirMigration(presence: LegacySyncDirPresence): LegacySyncDirMigrationAction {
+    if (!presence.legacyExists) return { action: 'none', reason: 'legacy-absent' };
+    if (presence.targetState === 'absent') return { action: 'move', clearEmptyTarget: false };
+    if (presence.targetState === 'empty') return { action: 'move', clearEmptyTarget: true };
+    if (!presence.legacyHasData) return { action: 'none', reason: 'legacy-no-data' };
+    return { action: 'conflict' };
+}
+
+export type LegacySyncDirMigrationResult =
+    | { kind: 'not-needed'; reason: 'legacy-absent' | 'same-path' | 'legacy-no-data' }
+    | { kind: 'migrated'; from: string; to: string }
+    | { kind: 'conflict'; from: string; to: string }
+    | { kind: 'failed'; from: string; to: string; error: string };
+
+// 移行記録のmarker file（新dir直下）。gitの追跡対象からは外す
+const MIGRATION_MARKER_FILENAME = '.migrated-from';
+
+export interface SyncDirMigrationRecord {
+    from: string;
+    to: string;
+    migratedAt: string;
+}
+
+export function getMigrationMarkerPath(): string {
+    return join(getSyncDir(), MIGRATION_MARKER_FILENAME);
+}
+
+function isErrnoCode(e: unknown, code: string): boolean {
+    return typeof e === 'object' && e !== null && 'code' in e && e.code === code;
+}
+
+// renameを試み、cross-device (EXDEV) の場合のみcopy+削除へfallbackする。
+// それ以外の失敗（権限等）は移行失敗として呼び出し側へ伝える
+export function moveDirectory(from: string, to: string): void {
+    try {
+        renameSync(from, to);
+    } catch (e: unknown) {
+        if (!isErrnoCode(e, 'EXDEV')) throw e;
+        copyDirThenRemove(from, to);
+    }
+}
+
+// EXDEV fallbackの実体（XDG_DATA_HOME等で別ファイルシステムを指した場合の経路）。
+// copyが完了してから旧dirを削除する
+export function copyDirThenRemove(from: string, to: string): void {
+    // verbatimSymlinks: symlinkのリンクテキストをそのまま保持する。既定の挙動では
+    // 相対symlinkのターゲットが旧dir内の絶対パスへ解決されて書き換わるため、旧dirを
+    // 削除した時点でリンクが切れる（PR #49レビュー指摘）
+    cpSync(from, to, { recursive: true, verbatimSymlinks: true });
+    rmSync(from, { recursive: true, force: true });
+}
+
+function writeMigrationMarker(record: SyncDirMigrationRecord): void {
+    try {
+        // markerをgit repoの追跡対象外にする（git statusへの雑音防止。.gitが無い
+        // 移行結果〔非git dirの旧データ〕ではexcludeの書き先が無いためスキップ）
+        if (existsSync(join(getSyncDir(), '.git'))) {
+            ensureGitExcludePattern(MIGRATION_MARKER_FILENAME);
+        }
+        writeFileSync(getMigrationMarkerPath(), JSON.stringify(record, null, 2) + '\n', 'utf-8');
+    } catch (e: unknown) {
+        // markerは証跡であり、書けなくても移行自体は成立している
+        console.error(`Warning: could not write migration marker file: ${e}`);
+    }
+}
+
+// 旧同期ディレクトリ（~/.local/task-memory）から現行の同期ディレクトリ（env-pathsの
+// data path）への移行を冪等に実行する。tm sync / tm git コマンドの入口と自動同期
+// （tryAutoSync）の入口で呼ばれる。移行済み（旧dirが無い）なら何もしないため、
+// 何度呼んも安全（二重移行が起きない）。旧dir・新dirの両方にデータがある場合は
+// 既存の新パスデータの上書き事故を防ぐため移行せず、手動解決を促す警告のみ出す
+// 相対パスで書かれたremote URLはrepoの場所を基準に解決されるため、同期
+// ディレクトリを移動すると接続先が変わってしまう（PR #52レビュー指摘）。
+// scheme付きURL・絶対パス・scp形式（host:path）は場所に依存しないので対象外
+export function isRelativeLocalPathUrl(url: string): boolean {
+    if (url.length === 0) return false;
+    if (url.startsWith('/') || url.startsWith('~')) return false;
+    // Windows絶対パス (C:\... / C:/...)
+    if (/^[a-zA-Z]:[\\/]/.test(url)) return false;
+    if (url.includes('://')) return false;
+    // scp形式や host:path は最初の '/' より前に ':' がある
+    const colon = url.indexOf(':');
+    const slash = url.indexOf('/');
+    if (colon !== -1 && (slash === -1 || colon < slash)) return false;
+    return true;
+}
+
+function gitIn(dir: string, args: string[]): { status: number; stdout: string } {
+    const result = spawnSync('git', ['-C', dir, ...args], { encoding: 'utf-8', stdio: 'pipe' });
+    return { status: result.status ?? 1, stdout: result.stdout ?? '' };
+}
+
+// 移行でrepoの場所が変わるため、相対パスで設定されたremote URLを旧dir基準の
+// 絶対パスへ書き換えて接続先を保持する。書き換えに失敗しても移行自体は成立
+// しているため、markerと同じく警告に留める
+function preserveRelativeRemoteUrls(from: string, to: string): void {
+    if (!existsSync(join(to, '.git'))) return;
+    const remotes = gitIn(to, ['remote']);
+    if (remotes.status !== 0) return;
+    for (const remote of remotes.stdout.split('\n').map(s => s.trim()).filter(s => s.length > 0)) {
+        // pushurlは明示設定されている場合のみ対象にする（get-url --pushは
+        // 未設定時にfetch URLを返すため、configを直接読んで区別する）。
+        // expandedはinsteadOf展開後の実効URL。rawと異なる場合はinsteadOfの
+        // エイリアスであり場所に依存しないため、相対パスに見えても対象外
+        // （PR #53レビュー指摘）
+        const entries: { push: boolean; url: string; expanded: string | null }[] = [];
+        const fetch = gitIn(to, ['config', '--get', `remote.${remote}.url`]);
+        if (fetch.status === 0) {
+            const expanded = gitIn(to, ['remote', 'get-url', remote]);
+            entries.push({ push: false, url: fetch.stdout.trim(), expanded: expanded.status === 0 ? expanded.stdout.trim() : null });
+        }
+        const pushUrl = gitIn(to, ['config', '--get', `remote.${remote}.pushurl`]);
+        if (pushUrl.status === 0) {
+            const expanded = gitIn(to, ['remote', 'get-url', '--push', remote]);
+            entries.push({ push: true, url: pushUrl.stdout.trim(), expanded: expanded.status === 0 ? expanded.stdout.trim() : null });
+        }
+        for (const entry of entries) {
+            if (!isRelativeLocalPathUrl(entry.url)) continue;
+            if (entry.expanded === null || entry.expanded !== entry.url) continue;
+            const absolute = resolve(from, entry.url);
+            const setArgs = entry.push
+                ? ['remote', 'set-url', '--push', remote, absolute]
+                : ['remote', 'set-url', remote, absolute];
+            if (gitIn(to, setArgs).status !== 0) {
+                console.error(`Warning: could not preserve relative remote URL for "${remote}": ${entry.url}`);
+            }
+        }
+    }
+}
+
+export function migrateLegacySyncDir(): LegacySyncDirMigrationResult {
+    const from = getLegacySyncDir();
+    const to = getSyncDir();
+    if (resolve(from) === resolve(to)) {
+        return { kind: 'not-needed', reason: 'same-path' };
+    }
+    const decision = decideLegacySyncDirMigration({
+        legacyExists: isDirectoryPath(from),
+        legacyHasData: hasSyncData(from),
+        targetState: getDirectoryState(to),
+    });
+    if (decision.action === 'none') {
+        return { kind: 'not-needed', reason: decision.reason };
+    }
+    if (decision.action === 'conflict') {
+        console.error('Warning: both the legacy sync directory and the current sync directory exist.');
+        console.error(`  legacy:  ${from}`);
+        console.error(`  current: ${to}`);
+        console.error('Skipped migration to avoid overwriting either one. If the legacy data is the one to keep,');
+        console.error(`remove or rename the current directory, then run a tm sync command again.`);
+        return { kind: 'conflict', from, to };
+    }
+    try {
+        if (decision.clearEmptyTarget) {
+            rmSync(to, { recursive: true, force: true });
+        }
+        mkdirSync(dirname(to), { recursive: true });
+        moveDirectory(from, to);
+    } catch (e: unknown) {
+        console.error(`Warning: failed to migrate sync directory from ${from} to ${to}: ${e}`);
+        return { kind: 'failed', from, to, error: String(e) };
+    }
+    preserveRelativeRemoteUrls(from, to);
+    writeMigrationMarker({ from, to, migratedAt: new Date().toISOString() });
+    console.log(`Migrated sync data directory: ${from} -> ${to}`);
+    return { kind: 'migrated', from, to };
 }
 
 export function getProjectsDir(): string {
@@ -135,6 +368,10 @@ export function tryAutoSync(syncConfig: SyncConfig | undefined, store: TaskStore
     if (!syncConfig?.enabled || !syncConfig.auto) {
         return;
     }
+
+    // 旧パスにデータがあるまま新パスが未初期化だと自動同期が黙って止まるため、
+    // 移行を先に試みる（TASK-8）
+    migrateLegacySyncDir();
 
     if (!isSyncInitialized()) {
         return;
@@ -422,11 +659,13 @@ function backupFilePath(path: string): string {
     return candidate;
 }
 
-function ensureBackupExcluded(): void {
+// sync repoの.git/info/excludeへpattern行を追加する（backup file・移行marker等、
+// ローカル専用fileのgit status雑音防止。既に含まれていれば何もしない）
+function ensureGitExcludePattern(pattern: string): void {
     const excludePath = join(getSyncDir(), '.git', 'info', 'exclude');
-    const pattern = '*.bak-*';
     const current = existsSync(excludePath) ? readFileSync(excludePath, 'utf-8') : '';
     if (!current.split('\n').includes(pattern)) {
+        mkdirSync(dirname(excludePath), { recursive: true });
         writeFileSync(excludePath, current.replace(/\n?$/, '\n') + pattern + '\n', 'utf-8');
     }
 }
@@ -478,7 +717,7 @@ export function adoptRemoteIntoEmptyRepo(): AdoptResult {
         }
     }
     if (backedUp.length > 0) {
-        ensureBackupExcluded();
+        ensureGitExcludePattern('*.bak-*');
         console.log(`Backed up local bootstrap files before adopting remote data: ${backedUp.join(', ')}`);
     }
 

@@ -1,6 +1,6 @@
 {
   "name": "task-memory",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "A CLI tool for managing tasks with persistent memory, designed for AI-assisted development workflows",
   "type": "module",
   "license": "MIT",
@@ -37,5 +37,8 @@
     "tsup": "^8",
     "typescript": "^5",
     "vitest": "^2"
+  },
+  "dependencies": {
+    "env-paths": "^4.0.0"
   }
 }

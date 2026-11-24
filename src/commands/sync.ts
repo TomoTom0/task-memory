@@ -26,6 +26,7 @@ import {
     probeRemoteUnbornDefaultBranch,
     resolveRemoteSyncBranch,
     shouldRenameLocalBranchToRemoteDefault,
+    migrateLegacySyncDir,
 } from '../syncStore';
 import type { SyncConfig, Task } from '../types';
 
@@ -463,7 +464,7 @@ function handlePull(options: Record<string, string | boolean>): void {
                 }
             }
         }
-        currentStore.tasks = normalizeTaskOrders(mergedTasks);
+        currentStore.tasks = normalizeTaskOrders(mergedTasks, []);
         saveStore(currentStore);
         let msg = `Merged from sync repository. (${remoteStore.tasks.length} tasks)`;
         if (idCollisions > 0) msg += ` ID collisions resolved: ${idCollisions}.`;
@@ -471,7 +472,7 @@ function handlePull(options: Record<string, string | boolean>): void {
         console.log(msg);
     } else {
         // 上書きモード
-        currentStore.tasks = normalizeTaskOrders(remoteStore.tasks);
+        currentStore.tasks = normalizeTaskOrders(remoteStore.tasks, []);
         saveStore(currentStore);
         console.log(`Pulled from sync repository. (${remoteStore.tasks.length} tasks)`);
     }
@@ -621,7 +622,7 @@ function showHelp(): void {
 Usage: tm sync <subcommand> [options]
 
 Subcommands:
-  clone <url>             Clone a remote sync repository to ~/.local/task-memory
+  clone <url>             Clone a remote sync repository into the sync data directory
   add [--id <name>] [--save] [--remote <url>]
                           Add current project to sync
   remove                  Remove current project from sync
@@ -643,6 +644,9 @@ Examples:
 }
 
 export function syncCommand(args: string[]): void {
+    // 旧同期ディレクトリ（~/.local/task-memory）からの移行を先に行う（TASK-8）。
+    // 以降の全subcommandが移行後の新パスを参照する
+    migrateLegacySyncDir();
     const { subcommand, options, positional } = parseArgs(args);
 
     switch (subcommand) {

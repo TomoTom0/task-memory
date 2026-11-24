@@ -25,6 +25,9 @@ const KEEP_ENV: Readonly<Record<string, string>> = {
 // 隔離のために「削除する」環境変数（親環境に設定があると子プロセスgitがsandbox外を参照・更新しうる）
 const UNSET_ENV_KEYS = [
     'CODING_AGENT_ROOT',
+    // env-paths（getSyncDirの実装。TASK-8）がXDG_DATA_HOMEを参照するため、親環境の値が
+    // あると同期ディレクトリがsandbox外へ飛ぶ。削除してHOME基準の解決に固定する
+    'XDG_DATA_HOME',
     'GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE',
     'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES',
     'GIT_CONFIG_COUNT', 'GIT_CONFIG_PARAMETERS',

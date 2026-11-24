@@ -1,0 +1,173 @@
+# 経緯・詳細: TASK-8「同期ディレクトリのクロスプラットフォーム対応（env-paths）」
+# 出典: docs/dev/feature/cross-platform-sync-dir.md（発端: PR#7レビュー指摘 Thread PRRT_kwDOQkMxZc5nif8t）
+# 実装・テストコード執筆済み。OS判定（パス決定）はenv-pathsへ委譲しており、実機が
+# Linuxしかないことは (1) env-pathsのdata戻り値の差し替え注入（mock）でmacOS/Windows
+# 相当を与える (2) XDG_DATA_HOME環境変数で実解決を切り替える、の2段で吸収している。
+[meta]
+feature = "cross-platform-sync-dir"
+source_file = "src/syncStore.ts"
+verified = true
+verified_at = "2026-11-22"
+verified_by = "claude"
+test_command = "pnpm vitest run test/syncDir.test.ts"
+source_hash = "ee231f702e27d7319a90ad9d638ef4de94c413b9"
+note = "条件はdocs/dev/feature/cross-platform-sync-dir.md（改善案・対応時の注意点）と実装仕様（移行判定の決定表・marker・発火地点）を出典として走査。設計書にWindowsのdata path例として%APPDATA%と書かれていた点は、委任タスクの指定どおり現行env-paths（v4）の規則（%LOCALAPPDATA%\\task-memory\\Data）を優先した（差異はPR本文に記載）"
+
+# --- パス決定 ---
+
+[[condition]]
+id = "syncdir-paths.env-paths-contract"
+target_function = "getSyncDir"
+source = "docs/dev/feature/cross-platform-sync-dir.md 改善案節（envPaths('task-memory')のdataを使用）"
+source_lines = "test/syncDir.test.ts:114"
+description = "getSyncDirはenvPathsを名前task-memory・suffix空文字で呼び出し、そのdataを返す。suffix空文字の指定を欠くとdir名がtask-memory-nodejsになるため呼び出し契約を固定する"
+given = "env-pathsのdata戻り値を差し替え可能なmock（envPathsDataDir）を設定してgetSyncDir()を呼ぶ"
+expect_return_shape = "戻り値は差し替えたdata pathと一致し、env-pathsの呼び出し記録は{name: 'task-memory', suffix: ''}に一致する"
+
+[[condition]]
+id = "syncdir-paths.os-delegation"
+target_function = "getSyncDir / getLegacySyncDir"
+source = "docs/dev/feature/cross-platform-sync-dir.md 問題点・改善案節（各OSで自然なパス。OS毎の規則はenv-pathsに従う）"
+source_lines = "test/syncDir.test.ts:121"
+description = "OSごとのdata pathはenv-pathsの解決に全面的に委譲し（tm側にOS分岐を置かない）、旧パスは全OSで~/.local/task-memoryに固定される"
+given = "env-pathsのdata戻り値にmacOS相当（/Users/.../Library/Application Support/task-memory）とWindows相当（C:\\Users\\...\\AppData\\Local\\task-memory\\Data）を順に差し替えてgetSyncDir()/getLegacySyncDir()を呼ぶ"
+expect_return_shape = "getSyncDir()はいずれも差し替えた値をそのまま返す。getLegacySyncDir()はどちらの場合もjoin(homedir(), '.local', 'task-memory')"
+
+[[condition]]
+id = "syncdir-paths.linux-xdg"
+target_function = "getSyncDir"
+source = "env-pathsのLinux規則（XDG Base Directory。docs/dev/feature/cross-platform-sync-dir.md 改善案節のLinux例）"
+source_lines = "test/syncDir.test.ts:133"
+description = "実Linux解決: XDG_DATA_HOME未設定では~/.local/share/task-memory、設定時は$XDG_DATA_HOME/task-memoryに解決される。sandbox HOME配下に解離することが隔離canaryを兼ねる"
+given = "XDG_DATA_HOMEを削除/設定して実際のenv-paths実装（mock差し替えなし）でgetSyncDir()を呼ぶ（platform非linuxではskip）"
+expect_return_shape = "未設定: join(homedir(), '.local', 'share', 'task-memory')。設定: join(<XDG_DATA_HOME>, 'task-memory')"
+
+# --- 移行: 判定 ---
+
+[[condition]]
+id = "syncdir-migration.decision"
+target_function = "decideLegacySyncDirMigration"
+source = "docs/dev/feature/cross-platform-sync-dir.md 対応時の注意点節（既存ユーザーのデータ移行・二重移行と上書き事故の防止）を実装仕様の決定表として純粋関数化"
+source_lines = "test/syncDir.test.ts:148"
+description = "旧dir/新dirの状態の組合せからmove（新dir無し=そのままmove・新dir空=除去してmove）/none（旧dir無し・旧dirにtmデータ無し）/conflict（両dirにデータ）を正しく決める"
+given = "decideLegacySyncDirMigration({legacyExists, legacyHasData, targetState})を各分岐の入力で直接呼ぶ"
+expect_return_shape = "legacyExists=false → none/legacy-absent（legacyHasData・targetStateによらない）。legacyExists=trueかつtargetState=absent → move/clearEmptyTarget=false。empty → move/clearEmptyTarget=true。non-empty+legacyHasData=true → conflict。non-empty+legacyHasData=false → none/legacy-no-data"
+
+[[condition]]
+id = "syncdir-migration.dir-state"
+target_function = "hasSyncData / getDirectoryState"
+source = "実装仕様: tmのデータの判定（.git/projects/config.json）とdir状態（absent/empty/non-empty）。ファイル等dirとして読めないpathは非空扱いに倒す"
+source_lines = "test/syncDir.test.ts:168"
+description = "hasSyncDataは.git/projects/config.jsonのいずれかの有無でtmデータを判定し、getDirectoryStateはabsent/empty/non-emptyを返す"
+given = "存在しないpath・空dir・tmデータなしの非空dir・config.jsonを含むdirでそれぞれ呼ぶ"
+expect_return_shape = "absent → 'absent'/false。空dir → 'empty'/false。非空（tmデータなし） → 'non-empty'/false。config.jsonあり → hasSyncData=true"
+
+# --- 移行: 実行 ---
+
+[[condition]]
+id = "syncdir-migration.e2e-move"
+target_function = "migrateLegacySyncDir / writeMigrationMarker / moveDirectory"
+source = "docs/dev/feature/cross-platform-sync-dir.md 対応時の注意点節（データ移行・移行済みであることが分かるようにする）"
+source_lines = "test/syncDir.test.ts:186"
+description = "旧dir（git repo+projects+config.json）を新dirへ移行する。移行後に新dirはgit repoとして機能し続け、marker fileに出所・移行先・日時が記録されgit追跡対象から除外される"
+given = "旧dirにprojects/shared.json・config.json・git init済みの状態でmigrateLegacySyncDir()を呼ぶ（新dirは未作成）"
+expect_return_shape = "{kind: 'migrated', from: 旧dir, to: 新dir}。旧dirは消え、新dirの内容は旧dirと同一。git -C 新dir rev-parse --git-dirが成功。marker（.migrated-from）のJSONにfrom/to/migratedAtが入る。.git/info/excludeに.migrated-from行が追加される"
+
+[[condition]]
+id = "syncdir-migration.idempotent"
+target_function = "migrateLegacySyncDir"
+source = "docs/dev/feature/cross-platform-sync-dir.md 対応時の注意点節（二重移行の防止）"
+source_lines = "test/syncDir.test.ts:213"
+description = "移行済み（旧dirが既に無い）状態での再実行は何もせず、データ・markerも変化しない"
+given = "移行実行後にもう一度migrateLegacySyncDir()を呼ぶ"
+expect_return_shape = "{kind: 'not-needed', reason: 'legacy-absent'}。'Migrated sync data directory'のログなし。markerの内容・config.jsonが不変"
+
+[[condition]]
+id = "syncdir-migration.conflict-no-overwrite"
+target_function = "migrateLegacySyncDir"
+source = "docs/dev/feature/cross-platform-sync-dir.md 対応時の注意点節（既存の新パスデータの上書き事故の防止）"
+source_lines = "test/syncDir.test.ts:228"
+description = "旧dirと新dirの両方にデータがある場合は移行せず警告し、両者のデータを不変のまま保つ（上書きもファイル混入も起きない）"
+given = "旧dirにprojects/a.json・新dirにprojects/b.jsonを作成した状態でmigrateLegacySyncDir()を呼ぶ"
+expect_return_shape = "{kind: 'conflict'}。標準エラーに'Skipped migration'を含む警告。旧dir・新dirの内容がともに入力時のまま（相手側のファイルは混入しない）"
+
+[[condition]]
+id = "syncdir-migration.empty-target-cleared"
+target_function = "migrateLegacySyncDir"
+source = "実装仕様: 新dirの空dirはtmのデータではありえないため除去してから移行する（決定表のmove/clearEmptyTarget=true）"
+source_lines = "test/syncDir.test.ts:244"
+description = "新dirが空ディレクトリの場合はそれを除去してから旧dirを移行する"
+given = "旧dirにconfig.json、新dirを空dirで作成した状態でmigrateLegacySyncDir()を呼ぶ"
+expect_return_shape = "{kind: 'migrated'}。旧dirは消え、新dirに旧dirのconfig.jsonが届く"
+
+[[condition]]
+id = "syncdir-migration.legacy-no-data-quiet"
+target_function = "migrateLegacySyncDir"
+source = "実装仕様: 旧dirにtmのデータが無い場合は移行対象とせず、新dirのデータを優先する（警告も出さない）"
+source_lines = "test/syncDir.test.ts:256"
+description = "旧dirにtmのデータ（.git/projects/config.json）が無い場合は静かに無視し、新dirのデータ・旧dirの内容ともにそのまま残す"
+given = "旧dirにnotes.txtのみ、新dirにconfig.jsonがある状態でmigrateLegacySyncDir()を呼ぶ"
+expect_return_shape = "{kind: 'not-needed', reason: 'legacy-no-data'}。標準エラー出力なし。旧dirのnotes.txt・新dirのconfig.jsonが不変"
+
+[[condition]]
+id = "syncdir-migration.same-path"
+target_function = "migrateLegacySyncDir"
+source = "実装仕様: 新dirが旧dirと同一pathに解決される場合（例: XDG_DATA_HOME=~/.local）は移行の対象が存在しないため何もしない"
+source_lines = "test/syncDir.test.ts:271"
+description = "新dirと旧dirが同一パスに解決される場合はsame-pathとして何もしない"
+given = "XDG_DATA_HOMEを~/.localに設定してdata path == 旧dirにした状態で、旧dirにconfig.jsonを作成しmigrateLegacySyncDir()を呼ぶ（platform非linuxではskip）"
+expect_return_shape = "{kind: 'not-needed', reason: 'same-path'}。ログ出力なし。旧dirのconfig.jsonが不変"
+
+[[condition]]
+id = "syncdir-migration.copy-fallback"
+target_function = "copyDirThenRemove / moveDirectory"
+source = "実装仕様: renameのEXDEV（XDG_DATA_HOME等で別ファイルシステムを指した場合）はcopy+削除へfallbackする"
+source_lines = "test/syncDir.test.ts:285"
+description = "copyDirThenRemove（EXDEV fallbackの実体）はnested構成を含むdirをcopy先へ複製し、copy元dirを削除する"
+given = "config.jsonとprojects/deep/nested.jsonを含む一時dirに対してcopyDirThenRemove(src, dst)を直接呼ぶ"
+expect_return_shape = "dstに両ファイルが同一内容で存在し、srcは存在しない"
+
+# --- 移行: 発火地点 ---
+
+[[condition]]
+id = "syncdir-migration.sync-command-hook"
+target_function = "syncCommand / migrateLegacySyncDir"
+source = "実装仕様: 移行はtm syncコマンドの入口で自動実行される（以降の全subcommandが移行後の新パスを参照する）"
+source_lines = "test/syncDir.test.ts:300"
+description = "tm syncサブコマンドの入口で移行が自動的に走る"
+given = "旧dirにconfig.jsonがある状態でsyncCommand(['status'])を呼ぶ"
+expect_return_shape = "旧dirが消え、新dirにconfig.jsonが存在する"
+
+[[condition]]
+id = "syncdir-migration.git-command-hook"
+target_function = "gitCommand / migrateLegacySyncDir"
+source = "実装仕様: 移行はtm gitコマンドの入口でも自動実行される"
+source_lines = "test/syncDir.test.ts:309"
+description = "tm gitコマンドの入口で移行が自動的に走り、移行後の新dirに対してgitコマンドが機能する"
+given = "旧dirにgit init済みのrepoがある状態でgitCommand([])を呼ぶ"
+expect_return_shape = "旧dirが消え、git -C 新dir rev-parse --git-dirが成功し、'Git repository at'の案内が出る"
+
+[[condition]]
+id = "syncdir-migration.auto-sync-hook"
+target_function = "tryAutoSync / migrateLegacySyncDir"
+source = "実装仕様: 旧パスのまま新パスが未初期化だと自動同期が黙って止めるため、自動同期の入口でも移行を先に試みる"
+source_lines = "test/syncDir.test.ts:320"
+description = "自動同期（tryAutoSync）の入口で移行が走り、以後の保存（saveToSync）は新dirに対して行われる"
+given = "旧dirにgit init+projects/shared.json+config.jsonがある状態でtryAutoSync({id:'shared', enabled:true, auto:true}, store)を呼ぶ"
+expect_return_shape = "旧dirが消え、新dirに.gitが存在し、projects/shared.jsonにstoreのJSON serializationが書かれている"
+
+# --- 条件化しないと決定した項目 ---
+
+[[excluded]]
+item = "ヘルプ文言・docsの同期ディレクトリ記載から~/.local/task-memory固定表記を除去すること"
+source = "src/index.ts getHelpText・src/commands/sync.ts showHelpの文言変更"
+reason = "静的ヘルプ文字列の変更であり入出力の分岐条件を持たないため条件化しない（§8: 挙動に差を生まない内部処理に準ずる）。実pathの確認はtm sync statusの既存経路が担う"
+decided_at = "2026-11-22"
+decided_by = "claude"
+
+[[excluded]]
+item = "test/setup.tsのXDG_DATA_HOME削除・test/global-setup.tsの監視対象追加（新パス）・test/sync.test.tsの掃除対象追加（旧+新パス）"
+source = "docs/design/test-isolation.md の構造（隔離の担いはsetup/global-setupに集約）"
+reason = "テスト隔離基盤の拡張であり機能の入出力分岐ではないため、機能条件書では条件化しない。破壊が起これば既存のisolation guard（fail-hard assert・実データ不変guard）が検知する"
+decided_at = "2026-11-22"
+decided_by = "claude"

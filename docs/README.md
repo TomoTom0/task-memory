@@ -51,4 +51,4 @@
 バージョン単位のCHANGELOG。リリース準備（release-prep）で `unreleased.md` から `vX.X.X.md` として作成される。
 
 - `unreleased.md` - 次期バージョン用テンプレート
-- `v0.2.0.md` 〜 `v0.6.0.md` - 各バージョンの変更内容
+- `v0.2.0.md` 〜 `v0.6.1.md` - 各バージョンの変更内容

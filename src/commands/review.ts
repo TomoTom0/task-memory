@@ -1,5 +1,5 @@
 import { loadReviews, saveReviews, getNextReviewId, getReviewById } from '../reviewStore';
-import { loadTasks, saveTasks, getTaskById, getNextId } from '../store';
+import { loadTasks, saveTasksWithOrder, getTaskById, getNextId } from '../store';
 import { parseTaskArgs, buildTask } from '../utils/taskBuilder';
 import type { Review, ReviewStatus, Task } from '../types';
 
@@ -322,7 +322,7 @@ function handleAccept(args: string[]) {
     }
 
     if (createdTaskIds.length > 0) {
-        saveTasks(tasks, createdTaskIds);
+        saveTasksWithOrder(tasks, createdTaskIds);
         review.related_task_ids = [...(review.related_task_ids || []), ...createdTaskIds];
     }
 

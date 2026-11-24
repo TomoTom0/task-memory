@@ -103,11 +103,11 @@ Commands:
     Clear the gate and resume a blocked task (default target: todo).
 
   sync <subcommand> [options]
-    Sync tasks to ~/.local/task-memory/ repository.
+    Sync tasks to the OS-specific data directory ("tm sync status" shows the path).
     Subcommands: clone, add, remove, push, pull, set, status, list
 
   git <git-command> [args]
-    Run git commands in ~/.local/task-memory/ repository.
+    Run git commands in the sync data directory.
 
   docs [page]
     Show documentation. Pages: usage (default), agent-claude-md, agent-guide
