@@ -19,7 +19,7 @@
 
 ## Refactoring
 
-（変更内容をここに記載）
+- orderの重複解消を前処理 `resolveDuplicateOrders()` から `normalizeOrders()` 本体へ一本化し、前処理と `nextUp()` を廃止。重複時は優先度が最も高いタスクが元の値を保持し、残りは勝者と次に大きい既存値の間に連続配置される。あわせて保存経路をorder設定用の `saveTasksWithOrder()` とorder変更を伴わない `saveTasks()` に分離し、`recentlySetOrderIds` の渡し忘れを型レベルで防止 (TASK-9 / #48)
 
 ## Repository Management
 
